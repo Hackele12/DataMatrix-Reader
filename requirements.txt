@@ -1,0 +1,10 @@
+# Core dependencies for DataDetector v4
+opencv-python
+numpy
+pylibdmtx
+easyocr
+ultralytics
+pillow
+ids_peak
+ids_peak_ipl
+customtkinter

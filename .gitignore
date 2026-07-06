@@ -1,0 +1,49 @@
+# Python virtual environments
+.venv/
+venv/
+ENV/
+
+# Python cache and byte-compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Log files
+*.log
+vision_network_*.log
+app_debug.log
+
+# Local config files (contains camera settings, IP addresses, etc.)
+config*.json
+
+# Local dataset and collected training images
+dataset/
+training_data/
+auto_training_data/
+
+# Ignore ALL ML training runs and model weights (keep proprietary weights private)
+runs/
+models/
+*.pt
+*.pth
+*.onnx
+
+# Ignore PyInstaller / Build artifacts
+build/
+dist/
+*.spec
+
+# Ignore local packages folder (wheels)
+packages/
+
+# Ignore local documentation containing internal setup instructions
+IDS_Kamera_Inbetriebnahme.md
+Dokumentation_Projekt_und_KI.md
+evaluation_report.json
+ground_truth_template.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
