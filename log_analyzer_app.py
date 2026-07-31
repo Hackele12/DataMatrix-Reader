@@ -70,6 +70,13 @@ class LogAnalyzerApp(ctk.CTk):
         self._row_checkboxes = {}     # scan_id → CTkCheckBox Widget
         self._highlighted_scan_id = None  # Aktuell hervorgehobene Zeile
 
+        # Gleit-Animation & Einklapp-Zustand für Seitenleiste
+        self._sidebar_expanded = True
+        self._sidebar_width = 280
+        self._current_sidebar_width = 280
+        self._sidebar_anim_job = None
+        self._table_display_limit = 80  # Max. Zeilen pro Rendering (für max. Render-Geschwindigkeit)
+
         self._build_ui()
         self._load_log_files_list()
 
@@ -90,13 +97,28 @@ class LogAnalyzerApp(ctk.CTk):
                                     border_width=1, border_color=BORDER)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
+        self.sidebar.grid_columnconfigure(0, weight=1)
         self.sidebar.grid_rowconfigure(3, weight=1)
 
+        # Sidebar Header mit Titel und Schließen-Button (<)
+        sidebar_header = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        sidebar_header.grid(row=0, column=0, padx=(20, 10), pady=(18, 2), sticky="ew")
+        sidebar_header.grid_columnconfigure(0, weight=1)
+
         ctk.CTkLabel(
-            self.sidebar, text="Log Analyzer",
+            sidebar_header, text="Log Analyzer",
             font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
             text_color=ACCENT
-        ).grid(row=0, column=0, padx=20, pady=(24, 2), sticky="w")
+        ).grid(row=0, column=0, sticky="w")
+
+        self.btn_toggle_close = ctk.CTkButton(
+            sidebar_header, text="<", width=32, height=32,
+            fg_color="transparent", text_color=TXT_DARK, hover_color=BORDER,
+            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+            corner_radius=6,
+            command=self._toggle_sidebar
+        )
+        self.btn_toggle_close.grid(row=0, column=1, sticky="e")
 
         ctk.CTkLabel(
             self.sidebar, text="Statistiken & Diagnose v4.0",
@@ -104,13 +126,13 @@ class LogAnalyzerApp(ctk.CTk):
         ).grid(row=1, column=0, padx=20, pady=(0, 20), sticky="w")
 
         ctk.CTkLabel(
-            self.sidebar, text="Log-Datei auswählen:",
+            self.sidebar, text="Kamera / Log-Quelle:",
             font=ctk.CTkFont(weight="bold", size=13), text_color=TXT_DARK
         ).grid(row=2, column=0, padx=20, pady=(10, 2), sticky="w")
 
-        # Scrollbare Liste der Log-Dateien
+        # Scrollbare Liste der Kameras & Log-Quellen
         self.files_frame = ctk.CTkScrollableFrame(
-            self.sidebar, fg_color="transparent", label_text="Tages-Logs (.jsonl)"
+            self.sidebar, fg_color="transparent", label_text="Verfügbare Kameras"
         )
         self.files_frame.grid(row=3, column=0, padx=16, pady=(4, 16), sticky="nsew")
         self.files_buttons = []
@@ -135,6 +157,16 @@ class LogAnalyzerApp(ctk.CTk):
         # ------------------------- MAIN AREA -------------------------
         self.main_container = ctk.CTkTabview(self, fg_color=BG_CARD, segmented_button_selected_color=ACCENT, command=self._on_tab_changed)
         self.main_container.grid(row=0, column=1, padx=16, pady=16, sticky="nsew")
+
+        # Schwebe-Button (>) zum Ausklappen der Seitenleiste (bei eingeklapptem Zustand)
+        self.btn_toggle_open = ctk.CTkButton(
+            self, text=">", width=36, height=36,
+            fg_color=ACCENT, text_color="#FFFFFF", hover_color="#1D4ED8",
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
+            corner_radius=8,
+            command=self._toggle_sidebar
+        )
+        # Initial ausgeblendet, da Sidebar geöffnet startet
         
         self.tab_dashboard = self.main_container.add("Dashboard")
         self.tab_explorer = self.main_container.add("Log-Explorer")
@@ -197,6 +229,57 @@ class LogAnalyzerApp(ctk.CTk):
         if not self._detail_panel_visible:
             self.detail_panel.grid(row=0, column=2, padx=(0, 16), pady=16, sticky="nsew")
             self._detail_panel_visible = True
+
+    # ------------------------------------------------------------------ #
+    #  Seitenleiste Animation & Steuerung                                 #
+    # ------------------------------------------------------------------ #
+    def _toggle_sidebar(self):
+        """Klappt die linke Seitenleiste per 60 FPS Hardware-Surface-Displacement (place) ein oder aus."""
+        if self._sidebar_anim_job is not None:
+            self.after_cancel(self._sidebar_anim_job)
+            self._sidebar_anim_job = None
+
+        target_x = 0 if not self._sidebar_expanded else -self._sidebar_width
+        start_x = 0 if self._sidebar_expanded else -self._sidebar_width
+
+        if not self._sidebar_expanded:
+            self.sidebar.grid(row=0, column=0, sticky="nsew")
+            if hasattr(self, "btn_toggle_open"):
+                self.btn_toggle_open.place_forget()
+
+        steps = 14
+        duration_ms = 130
+        interval = max(1, duration_ms // steps)
+        step_count = 0
+
+        def animate():
+            nonlocal step_count
+            step_count += 1
+            progress = step_count / steps
+            # Smooth cubic ease-out calculation
+            eased = 1.0 - (1.0 - progress) ** 3
+            current_x = int(start_x + (target_x - start_x) * eased)
+
+            # High-speed surface placement (0.01ms overhead per frame)
+            self.sidebar.place(x=current_x, y=0, relheight=1.0)
+            self.sidebar.lift()
+
+            if step_count < steps:
+                self._sidebar_anim_job = self.after(interval, animate)
+            else:
+                self._sidebar_anim_job = None
+                if target_x == -self._sidebar_width:
+                    self.sidebar.grid_remove()
+                    if hasattr(self, "btn_toggle_open"):
+                        self.btn_toggle_open.place(x=12, y=24)
+                        self.btn_toggle_open.lift()
+                    self._sidebar_expanded = False
+                else:
+                    self.sidebar.grid(row=0, column=0, sticky="nsew")
+                    self.sidebar.place_forget()
+                    self._sidebar_expanded = True
+
+        animate()
 
     # ------------------------------------------------------------------ #
     #  Dashboard Tab                                                      #
@@ -347,7 +430,7 @@ class LogAnalyzerApp(ctk.CTk):
         self.row_buttons = []
 
     # ------------------------------------------------------------------ #
-    #  Log-Dateien auflisten                                               #
+    #  Log-Dateien & Kameras auflisten                                    #
     # ------------------------------------------------------------------ #
     def _load_log_files_list(self):
         for btn in self.files_buttons:
@@ -364,44 +447,117 @@ class LogAnalyzerApp(ctk.CTk):
             return
 
         try:
-            found_files = []
-            for root, _, files in os.walk(self._log_dir):
-                for f in files:
-                    if f.endswith(".jsonl"):
-                        full_p = os.path.join(root, f)
-                        rel_p = os.path.relpath(full_p, self._log_dir)
-                        found_files.append((rel_p, full_p))
+            # 1. Existierende Tages-Logs (scans_*.jsonl) automatisch in scans.jsonl konsolidieren
+            try:
+                import scan_logger
+                for root, dirs, _ in os.walk(self._log_dir):
+                    try:
+                        sl = scan_logger.ScanLogger(log_dir=root)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
-            found_files.sort(key=lambda x: x[0], reverse=True)
+            # 2. Config-Datei laden für Kamera-Namen-Zuordnung (z.B. cam1 -> Kamera 1)
+            config_map = {}
+            config_file = "config.json"
+            if os.path.exists(config_file):
+                try:
+                    with open(config_file, "r", encoding="utf-8") as f:
+                        cfg_data = json.load(f)
+                        if "cameras" in cfg_data and isinstance(cfg_data["cameras"], list):
+                            for c in cfg_data["cameras"]:
+                                cid = c.get("id")
+                                cname = c.get("name")
+                                if cid and cname:
+                                    config_map[cid.lower().strip()] = cname
+                except Exception:
+                    pass
 
-            # Button für Gesamtansicht aller Kameras ganz oben
+            def get_pretty_camera_name(folder_name: str) -> str:
+                clean = folder_name.strip()
+                lower = clean.lower()
+                if lower in config_map:
+                    return config_map[lower]
+                import re
+                m = re.match(r"^(?:cam|camera)[_\s]*(\d+)$", lower, re.IGNORECASE)
+                if m:
+                    return f"Kamera {m.group(1)}"
+                if lower == "cam1":
+                    return "Kamera 1"
+                if lower == "cam2":
+                    return "Kamera 2"
+                return clean.capitalize()
+
+            camera_sources = []  # Tuples: (display_name, target_path)
+
+            # Kamera-Unterordner in _log_dir suchen
+            subdirs = [d for d in os.listdir(self._log_dir) if os.path.isdir(os.path.join(self._log_dir, d))]
+            subdirs.sort()
+
+            has_camera_subdirs = False
+            for sd in subdirs:
+                if sd.lower() == "images":
+                    continue
+                sd_path = os.path.join(self._log_dir, sd)
+                has_jsonl = False
+                for root, _, files in os.walk(sd_path):
+                    if any(f.endswith(".jsonl") for f in files):
+                        has_jsonl = True
+                        break
+                if has_jsonl or sd.lower().startswith("cam"):
+                    has_camera_subdirs = True
+                    disp_name = f"📷 {get_pretty_camera_name(sd)}"
+                    camera_sources.append((disp_name, sd_path))
+
+            # Direkte .jsonl-Dateien im Hauptverzeichnis prüfen
+            root_jsonl = [f for f in os.listdir(self._log_dir) if f.endswith(".jsonl") and os.path.isfile(os.path.join(self._log_dir, f))]
+            if root_jsonl:
+                if not has_camera_subdirs:
+                    camera_sources.append(("📷 Standard-Kamera", self._log_dir))
+                else:
+                    camera_sources.append(("📷 Hauptverzeichnis (Standard)", self._log_dir))
+
+            # Top Button: "★ Alle Kameras (Gesamtübersicht)"
+            all_name = "★ Alle Kameras (Gesamtübersicht)"
             all_btn = ctk.CTkButton(
-                self.files_frame, text="★ Alle Kameras (Gesamt)",
+                self.files_frame, text=all_name,
                 fg_color="transparent", text_color=ACCENT,
                 hover_color=BORDER, anchor="w", font=ctk.CTkFont(weight="bold"),
-                command=lambda: self._load_log_file("__ALL__", "★ Alle Kameras (Gesamt)")
+                command=lambda: self._load_log_file("__ALL__", all_name)
             )
             all_btn.pack(fill="x", pady=2)
             self.files_buttons.append(all_btn)
 
-            for rel_path, full_path in found_files:
-                display_name = rel_path.replace("\\", " / ")
+            # Kamera Buttons hinzufügen
+            for disp_name, target_path in camera_sources:
                 btn = ctk.CTkButton(
-                    self.files_frame, text=display_name,
+                    self.files_frame, text=disp_name,
                     fg_color="transparent", text_color=TXT_DARK,
                     hover_color=BORDER, anchor="w",
-                    command=lambda p=full_path, name=display_name: self._load_log_file(p, name)
+                    command=lambda p=target_path, name=disp_name: self._load_log_file(p, name)
                 )
                 btn.pack(fill="x", pady=2)
                 self.files_buttons.append(btn)
 
-            # Standardmäßig "Alle Kameras (Gesamt)" laden
-            self._load_log_file("__ALL__", "★ Alle Kameras (Gesamt)")
+            # Aktuelle Selektion beibehalten oder Standard "★ Alle Kameras (Gesamtübersicht)" laden
+            if not self._current_log_filepath or self._current_log_filepath == "__ALL__":
+                self._load_log_file("__ALL__", all_name)
+            else:
+                matched = False
+                for disp_name, target_path in camera_sources:
+                    if target_path == self._current_log_filepath:
+                        self._load_log_file(target_path, disp_name)
+                        matched = True
+                        break
+                if not matched:
+                    self._load_log_file("__ALL__", all_name)
+
         except Exception as e:
             print(f"Fehler beim Auflisten der Logs: {e}")
 
     # ------------------------------------------------------------------ #
-    #  Log-Datei laden & parsen                                            #
+    #  Log-Datei / Kamera laden                                            #
     # ------------------------------------------------------------------ #
     def _load_log_file(self, filepath: str, display_name: str = ""):
         self._current_log_filepath = filepath
@@ -425,6 +581,11 @@ class LogAnalyzerApp(ctk.CTk):
             self.auto_refresh_switch.configure(text_color=TXT_MID, text="Live Auto-Update (PAUSIERT)")
 
     def _auto_refresh_check(self):
+        # Auto-Refresh verschieben, falls gerade eine Animation läuft
+        if getattr(self, "_sidebar_anim_job", None) is not None:
+            self.after(1000, self._auto_refresh_check)
+            return
+
         if self._auto_refresh_enabled and self._log_dir and os.path.exists(self._log_dir):
             try:
                 latest_mtime = 0.0
@@ -440,12 +601,17 @@ class LogAnalyzerApp(ctk.CTk):
                             except Exception:
                                 pass
 
-                if latest_mtime != self._last_mtime:
+                # Nur neu laden, wenn es echte Änderungen gab
+                if latest_mtime != self._last_mtime and self._last_mtime != 0:
                     self._last_mtime = latest_mtime
                     self._reload_current_file()
+                elif self._last_mtime == 0:
+                    self._last_mtime = latest_mtime
 
                 files_hash = f"{file_count}-{latest_mtime}"
                 if files_hash != self._last_log_files_hash:
+                    if self._last_log_files_hash != "":
+                        self._load_log_files_list()
                     self._last_log_files_hash = files_hash
                     self._update_disk_info()
             except Exception:
@@ -466,7 +632,13 @@ class LogAnalyzerApp(ctk.CTk):
                         if f.endswith(".jsonl"):
                             target_files.append(os.path.join(root, f))
             elif os.path.exists(self._current_log_filepath):
-                target_files.append(self._current_log_filepath)
+                if os.path.isdir(self._current_log_filepath):
+                    for root, _, files in os.walk(self._current_log_filepath):
+                        for f in files:
+                            if f.endswith(".jsonl"):
+                                target_files.append(os.path.join(root, f))
+                else:
+                    target_files.append(self._current_log_filepath)
 
             latest_mtime = 0.0
             for tf in target_files:
@@ -507,6 +679,7 @@ class LogAnalyzerApp(ctk.CTk):
     #  Filter anwenden & Tabelle aktualisieren                            #
     # ------------------------------------------------------------------ #
     def _apply_filters(self):
+        self._table_display_limit = 80  # Limit bei neuen Filtern zurücksetzen
         search_query = self.search_entry.get().lower()
         grade_filter = self.filter_grade.get()
         status_filter = self.filter_status.get()
@@ -561,8 +734,9 @@ class LogAnalyzerApp(ctk.CTk):
         else:
             self.select_all_cb.deselect()
 
-        # Zeilen zeichnen
-        for idx, r in enumerate(self._filtered_records):
+        # Zeilen zeichnen (begrenzt auf _table_display_limit für max. GUI-Performance)
+        visible_records = self._filtered_records[:self._table_display_limit]
+        for idx, r in enumerate(visible_records):
             scan_id = r.get("scan_id", "")
             is_checked = scan_id in self._selected_scan_ids
             is_highlighted = scan_id == self._highlighted_scan_id
@@ -659,6 +833,22 @@ class LogAnalyzerApp(ctk.CTk):
             for child in row_frame.winfo_children():
                 child.bind("<Enter>", _on_row_enter)
                 child.bind("<Leave>", _on_row_leave)
+
+        # Button zum Laden weiterer Einträge anzeigen, falls mehr Daten existieren
+        if len(self._filtered_records) > len(visible_records):
+            remaining = len(self._filtered_records) - len(visible_records)
+            btn_more = ctk.CTkButton(
+                self.table_rows_frame,
+                text=f"▼  Weitere {min(80, remaining)} von {remaining} Einträgen anzeigen...",
+                fg_color="transparent", text_color=ACCENT, hover_color=BORDER,
+                font=ctk.CTkFont(size=12, weight="bold"),
+                command=self._load_more_table_rows
+            )
+            btn_more.pack(fill="x", pady=8)
+
+    def _load_more_table_rows(self):
+        self._table_display_limit += 80
+        self._update_table()
 
     def _on_tab_changed(self, tab_name: str = ""):
         """Setzt die Filter auf Default zurück, wenn der Nutzer zum Dashboard wechselt."""
@@ -761,7 +951,13 @@ class LogAnalyzerApp(ctk.CTk):
                         if f.endswith(".jsonl"):
                             target_files.append(os.path.join(root, f))
         elif self._current_log_filepath and os.path.exists(self._current_log_filepath):
-            target_files.append(self._current_log_filepath)
+            if os.path.isdir(self._current_log_filepath):
+                for root, _, files in os.walk(self._current_log_filepath):
+                    for f in files:
+                        if f.endswith(".jsonl"):
+                            target_files.append(os.path.join(root, f))
+            else:
+                target_files.append(self._current_log_filepath)
 
         for tf in target_files:
             try:
@@ -1121,8 +1317,20 @@ class LogAnalyzerApp(ctk.CTk):
             text=f"Gesamt: {timing.get('total_ms', 0)}ms  (YOLO: {timing.get('yolo_ms', 0)}ms, OCR: {timing.get('ocr_ms', 0)}ms, DMTX: {timing.get('dmtx_ms', 0)}ms)"
         )
         self.detail_labels["Kamera"].configure(text=meta.get("camera_model") or "—")
+        exp_us = meta.get("exposure_us")
+        if exp_us is None or float(exp_us) == 0:
+            exp_us = float(meta.get("last_exposure", 6.0)) * 1000.0 if meta.get("last_exposure") else 6000.0
+        else:
+            exp_us = float(exp_us)
+
+        gain_val = meta.get("gain")
+        if gain_val is None or float(gain_val) == 0:
+            gain_val = float(meta.get("last_gain", 2.0)) if meta.get("last_gain") else 2.0
+        else:
+            gain_val = float(gain_val)
+
         self.detail_labels["Belichtung/Gain"].configure(
-            text=f"Exp: {meta.get('exposure_us', 0) / 1000.0:.1f} ms  |  Gain: {meta.get('gain', 0.0):.2f}"
+            text=f"Exp: {exp_us / 1000.0:.1f} ms  |  Gain: {gain_val:.2f}"
         )
         self.detail_labels["Flags"].configure(text=", ".join(qual.get("flags", [])) or "Keine")
 

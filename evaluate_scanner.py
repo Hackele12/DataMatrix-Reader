@@ -112,15 +112,8 @@ def _detect_and_crop(model, image: np.ndarray) -> tuple[np.ndarray, float]:
     conf = float(best_box.conf[0])
     x1, y1, x2, y2 = map(int, best_box.xyxy[0])
 
-    # 20px Padding (analog zur App)
-    padding = 20
-    fh, fw = image.shape[:2]
-    x1 = max(0, x1 - padding)
-    y1 = max(0, y1 - padding)
-    x2 = min(fw, x2 + padding)
-    y2 = min(fh, y2 + padding)
-
-    cropped = image[y1:y2, x1:x2]
+    # Mit Begradigung (Deskewing) ausschneiden
+    cropped = scanner.deskew_crop(image, (x1, y1, x2, y2), padding=60)
     return cropped, conf
 
 

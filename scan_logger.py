@@ -204,8 +204,8 @@ class ScanLogger:
         except Exception as e:
             logger.error(f"ScanLogger: Verzeichnis erstellen fehlgeschlagen: {e}")
 
-        # Alte Log-Dateien aufräumen
-        self._cleanup_old_logs()
+        # Alte Log-Dateien in Haupt-Logdatei scans.jsonl zusammenführen & aufräumen
+        self._consolidate_and_rotate_logs()
 
         logger.info(
             f"ScanLogger initialisiert: log_dir='{log_dir}', "
@@ -251,33 +251,86 @@ class ScanLogger:
         return self._disk_ok
 
     # ------------------------------------------------------------------ #
-    #  Log-Rotation                                                        #
+    #  Log-Rotation & Konsolidierung                                      #
     # ------------------------------------------------------------------ #
-    def _cleanup_old_logs(self):
-        """Löscht alte Log-Dateien wenn mehr als _MAX_LOG_FILES vorhanden."""
+    def _consolidate_and_rotate_logs(self):
+        """
+        Führt alte Tages-Logdateien (scans_*.jsonl) automatisch in die primäre
+        Gesamtdatei `scans.jsonl` zusammen und entfernt alte Tages-Dateien.
+        """
         try:
-            log_files = sorted(
-                [f for f in os.listdir(self._log_dir) if f.endswith(".jsonl")],
+            target_single_log = os.path.join(self._log_dir, "scans.jsonl")
+            daily_files = sorted(
+                [f for f in os.listdir(self._log_dir) if f.startswith("scans_") and f.endswith(".jsonl")]
             )
-            if len(log_files) > _MAX_LOG_FILES:
-                for old_file in log_files[:-_MAX_LOG_FILES]:
-                    old_path = os.path.join(self._log_dir, old_file)
-                    os.remove(old_path)
-                    logger.info(f"ScanLogger: Alte Log-Datei gelöscht: {old_file}")
+
+            if not daily_files:
+                return
+
+            records_by_id = {}
+            ordered_records = []
+
+            # 1. Vorhandene Records aus scans.jsonl einlesen
+            if os.path.exists(target_single_log):
+                with open(target_single_log, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line_str = line.strip()
+                        if not line_str:
+                            continue
+                        try:
+                            rec = json.loads(line_str)
+                            sid = rec.get("scan_id") or rec.get("ts")
+                            if sid and sid not in records_by_id:
+                                records_by_id[sid] = line_str
+                                ordered_records.append(line_str)
+                        except Exception:
+                            pass
+
+            # 2. Records aus alten Tages-Dateien einlesen & anhängen (falls noch nicht vorhanden)
+            for df in daily_files:
+                df_path = os.path.join(self._log_dir, df)
+                try:
+                    with open(df_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line_str = line.strip()
+                            if not line_str:
+                                continue
+                            try:
+                                rec = json.loads(line_str)
+                                sid = rec.get("scan_id") or rec.get("ts")
+                                if sid and sid not in records_by_id:
+                                    records_by_id[sid] = line_str
+                                    ordered_records.append(line_str)
+                            except Exception:
+                                pass
+                except Exception as e:
+                    logger.warning(f"ScanLogger: Fehler beim Lesen von {df}: {e}")
+
+            # 3. Konsolidierte scans.jsonl schreiben
+            with open(target_single_log, "w", encoding="utf-8") as f:
+                for l_str in ordered_records:
+                    f.write(l_str + "\n")
+
+            # 4. Alte Tages-Logdateien entfernen
+            for df in daily_files:
+                df_path = os.path.join(self._log_dir, df)
+                try:
+                    os.remove(df_path)
+                    logger.info(f"ScanLogger: Tagesdatei in scans.jsonl konsolidiert & entfernt: {df}")
+                except Exception as e:
+                    logger.warning(f"ScanLogger: Fehler beim Löschen von {df}: {e}")
+
         except Exception as e:
-            logger.debug(f"ScanLogger: Log-Cleanup Fehler: {e}")
+            logger.error(f"ScanLogger: Log-Konsolidierungsfehler: {e}")
 
     def _get_log_filepath(self) -> str:
-        """Gibt den Pfad zur aktuellen Tages-Log-Datei zurück."""
-        date_str = time.strftime("%Y-%m-%d")
-        return os.path.join(self._log_dir, f"scans_{date_str}.jsonl")
+        """Gibt den Pfad zur primären Gesamt-Logdatei (scans.jsonl) zurück."""
+        return os.path.join(self._log_dir, "scans.jsonl")
 
-    def _get_image_dir_today(self) -> str:
-        """Gibt den Pfad zum aktuellen Tages-Bild-Ordner zurück."""
-        date_str = time.strftime("%Y-%m-%d")
-        path = os.path.join(self._images_dir, date_str)
-        os.makedirs(path, exist_ok=True)
-        return path
+    def _get_image_dir(self) -> str:
+        """Gibt den Pfad zum Bild-Ordner zurück."""
+        os.makedirs(self._images_dir, exist_ok=True)
+        return self._images_dir
 
     # ------------------------------------------------------------------ #
     #  Bild speichern                                                      #
@@ -294,7 +347,7 @@ class ScanLogger:
             Relativer Pfad zum gespeicherten Bild oder None bei Fehler.
         """
         try:
-            img_dir = self._get_image_dir_today()
+            img_dir = self._get_image_dir()
             filename = f"{scan_id}.jpg"
             filepath = os.path.join(img_dir, filename)
 

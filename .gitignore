@@ -47,7 +47,3 @@ ground_truth_template.json
 .DS_Store
 Thumbs.db
 
-# Zip releases
-*.zip
-
-

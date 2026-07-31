@@ -1,9 +1,9 @@
 @echo off
-title DataDetector v5 - Automatisches Setup
+title DataDetector v4 - Automatisches Setup
 cd /d "%~dp0"
 
 echo ============================================================
-echo  DataDetector v5 - Installation der Abhängigkeiten
+echo  DataDetector v4 - Installation der Abhängigkeiten
 echo ============================================================
 echo.
 

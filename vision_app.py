@@ -169,7 +169,80 @@ class IDSFrameGrabber:
         self.serial = ""
         self.last_frame_time = time.time()  # Zeitstempel des letzten erfolgreichen Frames
 
-    def start(self):
+    @staticmethod
+    def list_cameras() -> list[dict]:
+        """
+        Listet alle im System verfügbaren IDS-Kameras auf.
+        
+        Returns:
+            list[dict]: Liste von Kamera-Dicts mit 'serial', 'model', 'display_name'.
+        """
+        cameras = []
+        if not IDS_AVAILABLE:
+            return cameras
+        try:
+            ids_peak.Library.Initialize()
+            dm = ids_peak.DeviceManager.Instance()
+            
+            config = _load_config()
+            camera_ip = config.get("camera_ip")
+            if camera_ip:
+                import struct as _struct
+                import socket as _socket
+                try:
+                    ip_int = _struct.unpack("!I", _socket.inet_aton(camera_ip))[0]
+                    dm.Update()
+                    systems = dm.Systems()
+                    sys_count = systems.size() if hasattr(systems, 'size') else len(systems)
+                    for sys_idx in range(sys_count):
+                        system = systems[sys_idx]
+                        sys_name = system.DisplayName()
+                        if "U3V" in sys_name or "USB" in sys_name:
+                            continue
+                        interfaces = system.Interfaces()
+                        if_count = interfaces.size() if hasattr(interfaces, 'size') else len(interfaces)
+                        for if_idx in range(if_count):
+                            iface_desc = interfaces[if_idx]
+                            if "Wi-Fi" in iface_desc.DisplayName():
+                                continue
+                            try:
+                                opened = iface_desc.OpenedInterface()
+                                nodemaps = opened.NodeMaps()
+                                nm_count = nodemaps.size() if hasattr(nodemaps, 'size') else len(nodemaps)
+                                if nm_count > 0:
+                                    nodemap = nodemaps[0]
+                                    if nodemap.HasNode("GevDiscoveryUnicastIPAddressToAdd"):
+                                        nodemap.FindNode("GevDiscoveryUnicastIPAddressToAdd").SetValue(ip_int)
+                                        nodemap.FindNode("GevDiscoveryUnicastIPAddressAdd").Execute()
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+            
+            dm.Update()
+            devices = dm.Devices()
+            dev_count = devices.size() if hasattr(devices, 'size') else len(devices)
+            for idx in range(dev_count):
+                desc = devices[idx]
+                model = desc.ModelName()
+                serial = desc.SerialNumber()
+                display_name = f"{model} ({serial})"
+                cameras.append({
+                    "serial": serial,
+                    "model": model,
+                    "display_name": display_name,
+                    "index": idx
+                })
+        except Exception as e:
+            logger.warning(f"Fehler bei Kamera-Auflistung: {e}")
+        finally:
+            try:
+                ids_peak.Library.Close()
+            except Exception:
+                pass
+        return cameras
+
+    def start(self, target_serial: str | None = None):
         """Kamera finden, öffnen, Buffer anlegen und Aufnahme starten."""
         if not IDS_AVAILABLE:
             logger.error("IDS peak SDK nicht installiert!")
@@ -222,15 +295,28 @@ class IDSFrameGrabber:
                     logger.warning(f"Fehler bei der Unicast-Konfiguration: {e_systems}")
 
             dm.Update()
-            if dm.Devices().empty():
+            devices = dm.Devices()
+            dev_count = devices.size() if hasattr(devices, 'size') else len(devices)
+            if dev_count == 0:
                 logger.error("Keine IDS-Kamera gefunden!")
                 ids_peak.Library.Close()
                 return False
 
-            desc = dm.Devices()[0]
+            desc = None
+            if target_serial:
+                for idx in range(dev_count):
+                    d = devices[idx]
+                    if d.SerialNumber() == target_serial:
+                        desc = d
+                        logger.info(f"Ziel-Kamera gewählt: {d.ModelName()} (S/N: {target_serial})")
+                        break
+
+            if desc is None:
+                desc = devices[0]
+                logger.info(f"Standard-Kamera (0) gewählt: {desc.ModelName()} (S/N: {desc.SerialNumber()})")
+
             self.model_name = desc.ModelName()
             self.serial = desc.SerialNumber()
-            logger.info(f"IDS Kamera gefunden: {self.model_name} (S/N: {self.serial})")
 
             self._device = desc.OpenDevice(ids_peak.DeviceAccessType_Control)
             self._nodemap = self._device.RemoteDevice().NodeMaps()[0]
@@ -293,8 +379,10 @@ class IDSFrameGrabber:
             node = self._nodemap.FindNode("ExposureTime")
             val = min(max(exposure_us, node.Minimum()), node.Maximum())
             node.SetValue(val)
+            self.exposure_us = val
             logger.info(f"Belichtungszeit gesetzt: {val:.0f} us")
         except Exception as e:
+            self.exposure_us = exposure_us
             logger.warning(f"Belichtungszeit konnte nicht gesetzt werden: {e}")
 
     def set_gain(self, gain: float):
@@ -303,8 +391,10 @@ class IDSFrameGrabber:
             node = self._nodemap.FindNode("Gain")
             val = min(max(gain, node.Minimum()), node.Maximum())
             node.SetValue(val)
+            self.gain = val
             logger.info(f"Gain gesetzt: {val:.2f}")
         except Exception as e:
+            self.gain = gain
             logger.warning(f"Gain konnte nicht gesetzt werden: {e}")
 
     def stop(self):
@@ -398,7 +488,12 @@ class AIVisionApp(ctk.CTk):
         self._auto_train_count = len(os.listdir(os.path.join(self._auto_train_dir, "images")))
         self._scan_counter = 0
 
+        self._camera_map = {}  # Map: display_name -> serial
+
         self._build_ui()
+
+        # --- Kameras beim Start im Hintergrund auflisten ---
+        self.after(200, self.refresh_cameras)
 
         # --- Scan-Logger initialisieren ---
         if ScanLogger is not None:
@@ -420,7 +515,7 @@ class AIVisionApp(ctk.CTk):
                                     border_width=1, border_color=BORDER)
         self.sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew")
         self.sidebar.grid_propagate(False)
-        self.sidebar.grid_rowconfigure(10, weight=1)
+        self.sidebar.grid_rowconfigure(12, weight=1)
 
         ctk.CTkLabel(
             self.sidebar, text="AI Vision Core",
@@ -431,14 +526,38 @@ class AIVisionApp(ctk.CTk):
         ctk.CTkLabel(
             self.sidebar, text=f"DataDetector v{APP_VERSION}",
             font=ctk.CTkFont(size=11), text_color=TXT_LIGHT
-        ).grid(row=1, column=0, padx=20, pady=(0, 20))
+        ).grid(row=1, column=0, padx=20, pady=(0, 16))
 
-        ctk.CTkLabel(self.sidebar, text="Kamera Einstellungen:", anchor="w",
+        # -- Kamera-Auswahl --
+        ctk.CTkLabel(self.sidebar, text="Kamera-Auswahl:", anchor="w",
                      font=ctk.CTkFont(weight="bold"), text_color=TXT_DARK
         ).grid(row=2, column=0, padx=20, sticky="w")
 
+        self.cam_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.cam_frame.grid(row=3, column=0, padx=20, pady=(2, 10), sticky="ew")
+        self.cam_frame.grid_columnconfigure(0, weight=1)
+
+        self.camera_optionmenu = ctk.CTkOptionMenu(
+            self.cam_frame, values=["Suche Kameras..."],
+            command=self._on_camera_selected,
+            height=28, dynamic_resizing=False
+        )
+        self.camera_optionmenu.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+
+        self.cam_refresh_btn = ctk.CTkButton(
+            self.cam_frame, text="⟳", width=28, height=28,
+            fg_color=TXT_MID, hover_color="#64748B",
+            command=self.refresh_cameras
+        )
+        self.cam_refresh_btn.grid(row=0, column=1, sticky="e")
+
+        # -- Kamera Einstellungen --
+        ctk.CTkLabel(self.sidebar, text="Kamera Einstellungen:", anchor="w",
+                     font=ctk.CTkFont(weight="bold"), text_color=TXT_DARK
+        ).grid(row=4, column=0, padx=20, sticky="w")
+
         self.settings_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        self.settings_frame.grid(row=3, column=0, padx=20, pady=(4, 16), sticky="ew")
+        self.settings_frame.grid(row=5, column=0, padx=20, pady=(4, 16), sticky="ew")
         self.settings_frame.grid_columnconfigure(0, weight=1)
         self.settings_frame.grid_columnconfigure(1, weight=1)
 
@@ -464,10 +583,10 @@ class AIVisionApp(ctk.CTk):
             font=ctk.CTkFont(size=13, weight="bold"),
             command=self.toggle_stream
         )
-        self.start_btn.grid(row=4, column=0, padx=20, pady=6)
+        self.start_btn.grid(row=6, column=0, padx=20, pady=6)
 
         ctk.CTkFrame(self.sidebar, height=1, fg_color=BORDER).grid(
-            row=5, column=0, padx=20, pady=12, sticky="ew"
+            row=7, column=0, padx=20, pady=12, sticky="ew"
         )
 
         # -- Zoom --
@@ -713,6 +832,60 @@ class AIVisionApp(ctk.CTk):
         else:
             self._stop_stream()
 
+    def refresh_cameras(self):
+        """Sucht nach verfügbaren IDS-Kameras und aktualisiert das Dropdown-Menü."""
+        def _worker():
+            cameras = IDSFrameGrabber.list_cameras()
+            self.after(0, lambda: self._update_camera_dropdown(cameras))
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _update_camera_dropdown(self, cameras: list[dict]):
+        self._camera_map.clear()
+        if not cameras:
+            display_values = ["Keine Kamera gefunden"]
+            self.camera_optionmenu.configure(values=display_values)
+            self.camera_optionmenu.set("Keine Kamera gefunden")
+            return
+
+        display_values = []
+        for cam in cameras:
+            name = cam["display_name"]
+            serial = cam["serial"]
+            self._camera_map[name] = serial
+            display_values.append(name)
+
+        self.camera_optionmenu.configure(values=display_values)
+
+        # Gespeicherte Kamera auswählen falls vorhanden
+        saved_serial = self._config.get("selected_camera_serial")
+        selected_name = display_values[0]
+        if saved_serial:
+            for name, serial in self._camera_map.items():
+                if serial == saved_serial:
+                    selected_name = name
+                    break
+
+        self.camera_optionmenu.set(selected_name)
+        if selected_name in self._camera_map:
+            self._config["selected_camera_serial"] = self._camera_map[selected_name]
+            _save_config(self._config)
+
+    def _on_camera_selected(self, selected_display_name: str):
+        serial = self._camera_map.get(selected_display_name)
+        if not serial:
+            return
+        if self._config.get("selected_camera_serial") == serial:
+            return
+
+        logger.info(f"Kamera gewechselt zu: {selected_display_name} (S/N: {serial})")
+        self._config["selected_camera_serial"] = serial
+        _save_config(self._config)
+
+        # Falls der Stream gerade läuft, neu starten
+        if self.stream_running:
+            self._stop_stream()
+            self.after(500, self._start_stream)
+
     def _update_camera_settings(self, event=None):
         if not self.stream_running or not self.grabber:
             return
@@ -782,8 +955,9 @@ class AIVisionApp(ctk.CTk):
 
             # 2) Kamera-Stream verbinden
             self.after(0, lambda: self._set_status("Verbinde mit Kamera...", WARN))
+            selected_serial = self._config.get("selected_camera_serial")
             grabber = IDSFrameGrabber()
-            if not grabber.start():
+            if not grabber.start(target_serial=selected_serial):
                 self.after(0, self._on_stream_failed)
                 return
 
@@ -937,7 +1111,8 @@ class AIVisionApp(ctk.CTk):
                     logger.info(f"Kamera Reconnect-Versuch {reconnect_attempts}/{max_reconnect_attempts}...")
                     
                     new_grabber = IDSFrameGrabber()
-                    if new_grabber.start():
+                    selected_serial = self._config.get("selected_camera_serial")
+                    if new_grabber.start(target_serial=selected_serial):
                         self.grabber = new_grabber
                         try:
                             exp_val = float(self._config.get("last_exposure", 20.0))
@@ -1129,11 +1304,23 @@ class AIVisionApp(ctk.CTk):
                 "crop_size": [scan_frame.shape[1], scan_frame.shape[0]] if detection_box else None,
                 "label_detected": detection_box is not None,
             }
+            exp_val = 20.0
+            try:
+                exp_val = float(self.exposure_entry.get())
+            except Exception:
+                exp_val = float(self._config.get("last_exposure", 20.0))
+
+            gain_val = 1.0
+            try:
+                gain_val = float(self.gain_entry.get())
+            except Exception:
+                gain_val = float(self._config.get("last_gain", 1.0))
+
             meta_info = {
                 "camera_model": self.grabber.model_name if self.grabber else "",
                 "camera_serial": self.grabber.serial if self.grabber else "",
-                "exposure_us": float(self._config.get("last_exposure", 0)) * 1000.0,
-                "gain": float(self._config.get("last_gain", 0)),
+                "exposure_us": exp_val * 1000.0,
+                "gain": gain_val,
                 "app_version": APP_VERSION,
             }
             self.scan_logger.log_scan(

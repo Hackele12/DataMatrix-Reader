@@ -13,6 +13,7 @@ Features:
 """
 
 import logging
+import time
 import cv2
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -23,11 +24,6 @@ logger = logging.getLogger(__name__)
 _ocr_reader = None
 _dmtx_available = False
 _dmtx_loaded = False
-_zxing_available = False
-_zxing_loaded = False
-
-# --- Schalter für zxing-cpp Fast-Path Integration ---
-USE_ZXING_FASTPATH = True
 
 # --- Historie der letzten erfolgreichen Scans für Gitter-Rekonstruktion ---
 _recent_scans = []
@@ -35,67 +31,6 @@ _recent_scans = []
 # --- Erlaubte Zeichen für Horden-Codes ---
 ALLOWED_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 REQUIRED_LENGTH = 4
-
-
-def _load_zxing():
-    """
-    Lädt die 'zxingcpp'-Bibliothek bei Bedarf (Lazy-Loading).
-    
-    Returns:
-        bool: True, wenn die Bibliothek erfolgreich geladen wurde, sonst False.
-    """
-    global _zxing_available, _zxing_loaded
-    if not _zxing_loaded:
-        try:
-            import zxingcpp  # noqa: F401
-            _zxing_available = True
-            logger.info("zxingcpp erfolgreich geladen.")
-        except Exception as e:
-            logger.warning(f"zxingcpp konnte nicht geladen werden: {e}.")
-            _zxing_available = False
-        _zxing_loaded = True
-    return _zxing_available
-
-
-def _try_decode_zxing(frame: np.ndarray) -> str | None:
-    """
-    Versucht ein Bild per zxing-cpp mit verschiedenen Binarisierern zu dekodieren.
-    Konfiguration: try_rotate=True, try_downscale=True, try_invert=True
-    Binarisierer: LocalAverage, GlobalHistogram, FixedThreshold
-    """
-    if not _load_zxing():
-        return None
-    try:
-        import zxingcpp
-
-        if len(frame.shape) == 3:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = frame
-
-        binarizers = [
-            zxingcpp.Binarizer.LocalAverage,
-            zxingcpp.Binarizer.GlobalHistogram,
-            zxingcpp.Binarizer.FixedThreshold,
-        ]
-
-        for binarizer in binarizers:
-            res = zxingcpp.read_barcode(
-                gray,
-                formats=zxingcpp.BarcodeFormat.DataMatrix,
-                try_rotate=True,
-                try_downscale=True,
-                try_invert=True,
-                binarizer=binarizer,
-            )
-            if res and res.valid and res.text:
-                candidate = _clean_to_4chars(res.text.strip())
-                if candidate is not None:
-                    logger.info(f"zxing-cpp DataMatrix gefunden (Binarisierer {binarizer}): {candidate}")
-                    return candidate
-    except Exception as e:
-        logger.debug(f"zxing-cpp Dekodierungsfehler: {e}")
-    return None
 
 
 def _load_dmtx():
@@ -116,6 +51,75 @@ def _load_dmtx():
             _dmtx_available = False
         _dmtx_loaded = True
     return _dmtx_available
+
+
+# --- zxing-cpp Hochgeschwindigkeits-Reader (3D-Homographie & Multi-Scale) ---
+_zxing_available = None  # None = noch nicht geprüft
+
+
+def _load_zxing():
+    """
+    Prüft ob zxing-cpp verfügbar ist (Lazy-Loading).
+    
+    Returns:
+        bool: True wenn zxing-cpp importiert werden kann.
+    """
+    global _zxing_available
+    if _zxing_available is None:
+        try:
+            import zxingcpp  # noqa: F401
+            _zxing_available = True
+            logger.info("zxing-cpp (C++20 High-Speed Reader) erfolgreich geladen.")
+        except ImportError:
+            _zxing_available = False
+            logger.info("zxing-cpp nicht verfügbar — verwende pylibdmtx als Fallback.")
+    return _zxing_available
+
+
+def _try_zxing_dmtx(image: np.ndarray) -> str | None:
+    """
+    Versucht einen DataMatrix-Code per zxing-cpp zu dekodieren (< 5ms).
+    
+    zxing-cpp bietet automatische 3D-Homographie (Perspektiventzerrung),
+    Multi-Scale-Pyramiden und einen HybridBinarizer für schwierige
+    Lichtverhältnisse.
+    
+    Args:
+        image (np.ndarray): Das Graustufen- oder Farbbild.
+        
+    Returns:
+        str | None: Der erkannte 4-stellige Code oder None.
+    """
+    if not _load_zxing():
+        return None
+    
+    try:
+        import zxingcpp
+        
+        # Sicherstellen, dass das Bild in Graustufen vorliegt
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image
+        
+        results = zxingcpp.read_barcodes(
+            gray,
+            formats=zxingcpp.BarcodeFormat.DataMatrix,
+        )
+        
+        if results:
+            for r in results:
+                text = r.text.strip()
+                candidate = _clean_to_4chars(text)
+                if candidate is not None:
+                    logger.info(f"zxing-cpp DataMatrix erkannt: '{candidate}' (Originaltext: '{text}')")
+                    return candidate
+            # Auch ungefilterte Ergebnisse loggen
+            logger.debug(f"zxing-cpp fand {len(results)} DataMatrix-Code(s), aber kein gültiges Horden-Format.")
+    except Exception as e:
+        logger.debug(f"zxing-cpp Fehler: {e}")
+    
+    return None
 
 
 def _load_ocr():
@@ -195,13 +199,15 @@ def _preprocess_for_ocr(image: np.ndarray) -> np.ndarray:
     return enhanced
 
 
-def _preprocess_ocr_variants(image: np.ndarray) -> list[tuple[str, np.ndarray]]:
+def _preprocess_ocr_variants(image: np.ndarray, fast_mode: bool = True) -> list[tuple[str, np.ndarray]]:
     """
-    Erzeugt mehrere vorverarbeitete Versionen des Bildes für OCR.
-    Verschiedene Kontraststufen erhöhen die Chance, ausgebleichte Codes zu lesen.
+    Erzeugt vorverarbeitete Versionen des Bildes für OCR.
+    Im Fast-Mode (Standard) werden nur die 2 effektivsten Varianten erzeugt.
+    Im vollständigen Modus werden alle 5 Varianten generiert.
     
     Args:
         image (np.ndarray): Das Originalbild (BGR oder Graustufen).
+        fast_mode (bool): True = nur 2 primäre Varianten, False = alle 5.
         
     Returns:
         list[tuple[str, np.ndarray]]: Liste von (Variantenname, vorverarbeitetes Bild).
@@ -222,18 +228,19 @@ def _preprocess_ocr_variants(image: np.ndarray) -> list[tuple[str, np.ndarray]]:
     clahe_agg = cv2.createCLAHE(clipLimit=8.0, tileGridSize=(8, 8))
     variants.append(("aggressiv", clahe_agg.apply(sharpened)))
     
-    # Variante 3: Extrem (clipLimit=15.0) – für stark ausgebleichte Codes
-    clahe_ext = cv2.createCLAHE(clipLimit=15.0, tileGridSize=(8, 8))
-    variants.append(("extrem", clahe_ext.apply(sharpened)))
-    
-    # Variante 4: Invertiert + aggressives CLAHE – für invertierte Kontraste
-    inverted = cv2.bitwise_not(sharpened)
-    clahe_inv = cv2.createCLAHE(clipLimit=8.0, tileGridSize=(8, 8))
-    variants.append(("invertiert", clahe_inv.apply(inverted)))
-    
-    # Variante 5: Binär-Otsu – maximaler Schwarz/Weiß-Kontrast
-    _, binary = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    variants.append(("binaer_otsu", binary))
+    if not fast_mode:
+        # Variante 3: Extrem (clipLimit=15.0) – für stark ausgebleichte Codes
+        clahe_ext = cv2.createCLAHE(clipLimit=15.0, tileGridSize=(8, 8))
+        variants.append(("extrem", clahe_ext.apply(sharpened)))
+        
+        # Variante 4: Invertiert + aggressives CLAHE – für invertierte Kontraste
+        inverted = cv2.bitwise_not(sharpened)
+        clahe_inv = cv2.createCLAHE(clipLimit=8.0, tileGridSize=(8, 8))
+        variants.append(("invertiert", clahe_inv.apply(inverted)))
+        
+        # Variante 5: Binär-Otsu – maximaler Schwarz/Weiß-Kontrast
+        _, binary = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        variants.append(("binaer_otsu", binary))
     
     return variants
 
@@ -1366,24 +1373,41 @@ def _read_datamatrix(frame: np.ndarray) -> str | None:
     Returns:
         str | None: Der 4-stellige Code oder None bei Fehlschlag.
     """
-    # 0. zxing-cpp Fast-Path Integration (wenn USE_ZXING_FASTPATH aktiv)
-    if USE_ZXING_FASTPATH:
-        zxing_res = _try_decode_zxing(frame)
-        if zxing_res is not None:
-            return zxing_res
+    if len(frame.shape) == 3:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = frame.copy()
 
+    h, w = gray.shape[:2]
+
+    # ===== STUFE 0: zxing-cpp Fast-Path (< 5ms, 3D-Homographie) =====
+    zxing_result = _try_zxing_dmtx(gray)
+    if zxing_result is not None:
+        logger.info(f"DataMatrix gefunden (zxing-cpp Fast-Path): {zxing_result}")
+        return zxing_result
+
+    # zxing-cpp mit Kontrastverstärkung versuchen
+    for clip_limit in [4.0, 10.0]:
+        clahe_zx = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
+        enhanced_zx = clahe_zx.apply(gray)
+        zxing_result = _try_zxing_dmtx(enhanced_zx)
+        if zxing_result is not None:
+            logger.info(f"DataMatrix gefunden (zxing-cpp + CLAHE {clip_limit}): {zxing_result}")
+            return zxing_result
+
+    # ===== STUFE 1+: pylibdmtx Fallback (nur wenn zxing-cpp fehlschlägt) =====
     if not _load_dmtx():
         return None
 
     try:
         from PIL import Image as PILImage
 
-        if len(frame.shape) == 3:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = frame.copy()
-
-        h, w = gray.shape[:2]
+        # Bild für pylibdmtx-Fallback auf max. 1200px Breite herunterskalieren
+        if w > 1200:
+            scale = 1200.0 / w
+            gray = cv2.resize(gray, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            h, w = gray.shape[:2]
+            logger.debug(f"DataMatrix-Fallback: Bild auf {w}x{h} herunterskaliert für pylibdmtx.")
 
         # 1. Schneller Direktscan auf Graustufenbild
         res_raw = _try_decode_dmtx(PILImage.fromarray(gray), timeout_ms=300)
@@ -1439,7 +1463,7 @@ def _read_datamatrix(frame: np.ndarray) -> str | None:
         candidates = []
         seen_centers = []
         
-        for k_size in [45, 35, 25, 15, 9]:
+        for k_size in [35, 15]:
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k_size, k_size))
             closed = cv2.morphologyEx(crop_inv, cv2.MORPH_CLOSE, kernel, iterations=2)
             cnts, _ = cv2.findContours(closed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -1644,8 +1668,15 @@ def _read_ocr_with_status(frame: np.ndarray) -> dict:
         # Untere 60% des Bildes scannen (Klarschrift liegt typischerweise unten)
         ocr_zone = frame[int(h_frame * 0.40):, :]
         
-        # Mehrere Preprocessing-Varianten erzeugen
-        variants = _preprocess_ocr_variants(ocr_zone.copy())
+        # OCR-Zone auf max. 800px Breite herunterskalieren (spart ~75% PyTorch-Rechenzeit)
+        ocr_h, ocr_w = ocr_zone.shape[:2]
+        if ocr_w > 800:
+            ocr_scale = 800.0 / ocr_w
+            ocr_zone = cv2.resize(ocr_zone, (0, 0), fx=ocr_scale, fy=ocr_scale, interpolation=cv2.INTER_AREA)
+            logger.debug(f"OCR-Zone herunterskaliert: {ocr_w}x{ocr_h} → {ocr_zone.shape[1]}x{ocr_zone.shape[0]}")
+        
+        # Primäre Preprocessing-Varianten erzeugen (Fast-Mode: nur 2 statt 5)
+        variants = _preprocess_ocr_variants(ocr_zone.copy(), fast_mode=True)
         
         # Bestes Ergebnis über alle Varianten sammeln
         best_ok_result = None       # Bestes "ok" Ergebnis (4 Zeichen, gültig)
@@ -2077,6 +2108,7 @@ def _reconstruct_from_inner(inner_8x8: np.ndarray) -> str | None:
 def _scan_datamatrix_pipeline(frame: np.ndarray) -> dict:
     """
     Führt die DataMatrix-Erkennungs- und Rekonstruktions-Pipeline aus.
+    zxing-cpp wird als blitzschneller Fast-Path vorangestellt.
     
     Args:
         frame (np.ndarray): Das Graustufenbild.
@@ -2084,6 +2116,38 @@ def _scan_datamatrix_pipeline(frame: np.ndarray) -> dict:
     Returns:
         dict: Das Scan-Ergebnis der DataMatrix-Pipeline.
     """
+    # ===== Fast-Path: zxing-cpp Direkterkennung (< 5ms) =====
+    zxing_result = _try_zxing_dmtx(frame)
+    if zxing_result is not None:
+        logger.info(f"DMX Pipeline: zxing-cpp Fast-Path erfolgreich: '{zxing_result}'")
+        return {
+            "status": "decoded",
+            "text": zxing_result,
+            "method_detail": "DataMatrix direkt dekodiert (zxing-cpp)",
+            "confidence": 1.0,
+            "observed_grid": None,
+        }
+
+    # zxing-cpp mit CLAHE-Kontrastverstärkung
+    if len(frame.shape) == 3:
+        gray_for_zx = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray_for_zx = frame
+    for clip_limit in [4.0, 10.0]:
+        clahe_zx = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
+        enhanced_zx = clahe_zx.apply(gray_for_zx)
+        zxing_result = _try_zxing_dmtx(enhanced_zx)
+        if zxing_result is not None:
+            logger.info(f"DMX Pipeline: zxing-cpp + CLAHE {clip_limit} erfolgreich: '{zxing_result}'")
+            return {
+                "status": "decoded",
+                "text": zxing_result,
+                "method_detail": f"DataMatrix dekodiert (zxing-cpp + CLAHE {clip_limit})",
+                "confidence": 1.0,
+                "observed_grid": None,
+            }
+
+    # ===== Fallback: pylibdmtx + Rekonstruktion =====
     visibility = _check_dmx_visibility(frame)
 
     if visibility["status"] == "clear":
@@ -2450,14 +2514,30 @@ def scan(frame: np.ndarray) -> dict:
     ocr_result = None
     dmx_result = None
 
+    # --- Timing: OCR und DMTX separat messen ---
+    _t_ocr_start = time.time()
+    _t_dmx_start = time.time()
+    _t_ocr_end = _t_ocr_start
+    _t_dmx_end = _t_dmx_start
+
+    def _timed_ocr(frm):
+        return _read_ocr_with_status(frm)
+
+    def _timed_dmx(frm):
+        return _scan_datamatrix_pipeline(frm)
+
     # Paralleles Ausführen von OCR und DMX
     with ThreadPoolExecutor(max_workers=2) as executor:
-        future_ocr = executor.submit(_read_ocr_with_status, frame)
-        future_dmx = executor.submit(_scan_datamatrix_pipeline, frame)
+        _t_ocr_start = time.time()
+        _t_dmx_start = time.time()
+        future_ocr = executor.submit(_timed_ocr, frame)
+        future_dmx = executor.submit(_timed_dmx, frame)
 
         try:
             ocr_result = future_ocr.result(timeout=30.0)
+            _t_ocr_end = time.time()
         except Exception as e:
+            _t_ocr_end = time.time()
             logger.warning(f"OCR-Thread Fehler: {e}")
             ocr_result = {
                 "status": "failed", "text": None, "partial_display": None,
@@ -2467,7 +2547,9 @@ def scan(frame: np.ndarray) -> dict:
 
         try:
             dmx_result = future_dmx.result(timeout=10.0)
+            _t_dmx_end = time.time()
         except Exception as e:
+            _t_dmx_end = time.time()
             logger.warning(f"DataMatrix-Thread Fehler: {e}")
             dmx_result = {
                 "status": "blocked", "text": None,
@@ -2477,6 +2559,12 @@ def scan(frame: np.ndarray) -> dict:
 
     # Ergebnisse mergen
     result = _merge_results(ocr_result, dmx_result, frame)
+
+    # Internes Timing für den ScanLogger bereitstellen (nicht-brechend)
+    result["_internal_timing"] = {
+        "ocr_ms": int((_t_ocr_end - _t_ocr_start) * 1000),
+        "dmtx_ms": int((_t_dmx_end - _t_dmx_start) * 1000),
+    }
 
     logger.info(
         f"Scan Ergebnis: success={result['success']}, "
@@ -2492,3 +2580,121 @@ def scan(frame: np.ndarray) -> dict:
             _recent_scans.pop(0)
 
     return result
+
+
+def deskew_crop(image: np.ndarray, box: tuple[int, int, int, int], padding: int = 60) -> np.ndarray:
+    """
+    Schneidet das Etikett aus dem Bild aus und begradigt es (Deskewing),
+    falls es rotiert/schräg ist.
+    
+    Kombiniert YOLO-Größenangaben mit klassischer Kanten-Winkelbestimmung.
+    
+    Args:
+        image: Das Originalbild (BGR).
+        box: Die YOLO Bounding Box (x1, y1, x2, y2).
+        padding: Großzügiges Padding um die Box, damit Ecken nicht abgeschnitten werden.
+        
+    Returns:
+        Das begradigte und passend zugeschnittene Etikett-Bild.
+    """
+    h_img, w_img = image.shape[:2]
+    x1, y1, x2, y2 = box
+    
+    # YOLO-Box Maße
+    w_box = x2 - x1
+    h_box = y2 - y1
+    
+    # 1. Großzügiges Padding hinzufügen
+    px1 = max(0, x1 - padding)
+    py1 = max(0, y1 - padding)
+    px2 = min(w_img, x2 + padding)
+    py2 = min(h_img, y2 + padding)
+    
+    crop = image[py1:py2, px1:px2]
+    if crop.size == 0:
+        return image[y1:y2, x1:x2] # Fallback auf Standard-Ausschnitt
+        
+    # 2. Graustufen & Binarisierung
+    if len(crop.shape) == 3:
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = crop.copy()
+        
+    # Weichzeichnen zur Rauschunterdrückung
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    
+    # Kanten-Erkennung (Canny) zur Erkennung paralleler Kanten/Ränder
+    edges = cv2.Canny(blurred, 30, 100)
+    
+    # Morphologisches Schließen, um Kanten zu verbinden
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+    closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+    
+    # 3. Alle Konturen durchsuchen, um den dominanten Winkel zu bestimmen
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return image[y1:y2, x1:x2]
+        
+    # Wir filtern Konturen nach einer gewissen Mindestgröße, um Rauschen zu vermeiden
+    valid_rects = []
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area > 1500: # Plausibler Kantenbereich
+            rect = cv2.minAreaRect(c)
+            valid_rects.append((area, rect))
+            
+    if not valid_rects:
+        return image[y1:y2, x1:x2]
+        
+    # Nimm das Rechteck mit der größten Fläche (dominanteste Kantenstruktur)
+    _, best_rect = max(valid_rects, key=lambda x: x[0])
+    center, size, angle = best_rect
+    w_rect, h_rect = size
+    
+    # Winkelkorrektur
+    if w_rect < h_rect:
+        w_rect, h_rect = h_rect, w_rect
+        angle += 90.0
+        
+    if angle > 45.0:
+        angle -= 90.0
+    elif angle < -45.0:
+        angle += 90.0
+        
+    # Wenn der Winkel extrem klein ist, reicht ein normaler Ausschnitt
+    if abs(angle) < 1.0:
+        return image[y1:y2, x1:x2]
+        
+    # 5. Rotieren des Ausschnitts um den Mittelpunkt der YOLO-Box (relativ zum Ausschnitt)
+    # Mittelpunkt der YOLO-Box im originalen Bild:
+    cx_orig = (x1 + x2) / 2.0
+    cy_orig = (y1 + y2) / 2.0
+    # Mittelpunkt relativ zum crop:
+    cx_crop = cx_orig - px1
+    cy_crop = cy_orig - py1
+    
+    M = cv2.getRotationMatrix2D((cx_crop, cy_crop), angle, 1.0)
+    
+    # Rotation anwenden (mit borderReplicate um schwarze Ränder an den Ecken zu minimieren)
+    rotated = cv2.warpAffine(crop, M, (crop.shape[1], crop.shape[0]), 
+                              flags=cv2.INTER_CUBIC, 
+                              borderMode=cv2.BORDER_REPLICATE)
+    
+    # 6. Begradigtes Etikett basierend auf der ursprünglichen YOLO-Box-Größe ausschneiden
+    rx1 = int(cx_crop - (w_box / 2.0))
+    ry1 = int(cy_crop - (h_box / 2.0))
+    rx2 = int(cx_crop + (w_box / 2.0))
+    ry2 = int(cy_crop + (h_box / 2.0))
+    
+    # Sicherheitsrand hinzufügen, da durch Begradigung Ecken leicht kippen
+    pad_safe = 15
+    rx1 = max(0, rx1 - pad_safe)
+    ry1 = max(0, ry1 - pad_safe)
+    rx2 = min(rotated.shape[1], rx2 + pad_safe)
+    ry2 = min(rotated.shape[0], ry2 + pad_safe)
+    
+    final_crop = rotated[ry1:ry2, rx1:rx2]
+    if final_crop.size == 0:
+        return image[y1:y2, x1:x2]
+        
+    return final_crop

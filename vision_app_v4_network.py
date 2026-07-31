@@ -141,6 +141,8 @@ class IDSFrameGrabber:
         self._buffers = []
         self.model_name = ""
         self.serial = ""
+        self.exposure_us = 6000.0
+        self.gain = 2.0
         self.last_frame_time = time.time()
 
     def start(self) -> bool:
@@ -257,8 +259,10 @@ class IDSFrameGrabber:
             node = self._nodemap.FindNode("ExposureTime")
             val = min(max(exposure_us, node.Minimum()), node.Maximum())
             node.SetValue(val)
+            self.exposure_us = val
             logger.info(f"[{self.cam_name}] Belichtungszeit gesetzt auf: {val:.0f} us")
         except Exception as e:
+            self.exposure_us = exposure_us
             logger.warning(f"[{self.cam_name}] Belichtungszeit Fehler: {e}")
 
     def set_gain(self, gain: float):
@@ -266,8 +270,10 @@ class IDSFrameGrabber:
             node = self._nodemap.FindNode("Gain")
             val = min(max(gain, node.Minimum()), node.Maximum())
             node.SetValue(val)
+            self.gain = val
             logger.info(f"[{self.cam_name}] Gain gesetzt auf: {val:.2f}")
         except Exception as e:
+            self.gain = gain
             logger.warning(f"[{self.cam_name}] Gain Fehler: {e}")
 
     def stop(self):
@@ -382,12 +388,20 @@ class CameraService:
         logger.info(f"[{self.cam_name}] Scan fertig ({duration_ms}ms): {result}")
 
         if self.scan_logger:
+            exp_us = getattr(self.grabber, "exposure_us", float(self.cfg.get("last_exposure", 6.0)) * 1000.0) if self.grabber else float(self.cfg.get("last_exposure", 6.0)) * 1000.0
+            gain_val = getattr(self.grabber, "gain", float(self.cfg.get("last_gain", 2.0))) if self.grabber else float(self.cfg.get("last_gain", 2.0))
             self.scan_logger.log_scan(
                 scan_result=result,
                 frame=scan_snapshot,
                 timing={"total_ms": duration_ms, "yolo_ms": t_yolo_ms, "scan_ms": t_scan_ms},
                 detection_info={"yolo_conf": detection_conf, "crop_size": crop_size, "label_detected": label_detected},
-                meta={"camera_model": self.grabber.model_name if self.grabber else "", "camera_serial": self.grabber.serial if self.grabber else "", "port": self.port}
+                meta={
+                    "camera_model": self.grabber.model_name if self.grabber else "",
+                    "camera_serial": self.grabber.serial if self.grabber else "",
+                    "exposure_us": exp_us,
+                    "gain": gain_val,
+                    "port": self.port
+                }
             )
 
         if result["success"]:
