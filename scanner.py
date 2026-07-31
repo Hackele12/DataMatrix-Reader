@@ -266,6 +266,54 @@ def _preprocess_tophat(image: np.ndarray) -> np.ndarray:
     return _sharpen(enhanced)
 
 
+def _preprocess_faded_contrast(image: np.ndarray) -> np.ndarray:
+    """
+    Spezial-Preprocessing für verbleichte, extrem kontrastarme Codes/Klarschriften.
+    Kombiniert Perzentil-Histogramm-Stretching (2%-98%) mit morphologischem TopHat-BottomHat-Boost.
+    """
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    # 1. Perzentil-Stretching (Spreizung des verbleichten Grauwertspektrums auf 0..255)
+    p_low, p_high = np.percentile(gray, (2, 98))
+    if p_high > p_low:
+        stretched = np.clip((gray.astype(np.float32) - p_low) * (255.0 / (p_high - p_low)), 0, 255).astype(np.uint8)
+    else:
+        stretched = gray
+
+    # 2. Morphologischer Boost: Enhanced = Stretched + TopHat - BottomHat
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+    tophat = cv2.morphologyEx(stretched, cv2.MORPH_TOPHAT, kernel)
+    bottomhat = cv2.morphologyEx(stretched, cv2.MORPH_BLACKHAT, kernel)
+    
+    enhanced = cv2.add(stretched, tophat)
+    enhanced = cv2.subtract(enhanced, bottomhat)
+
+    return _sharpen(enhanced)
+
+
+def _preprocess_sauvola(image: np.ndarray, window_size: int = 15, k: float = 0.2) -> np.ndarray:
+    """
+    Lokale Sauvola-Binarisierung zur Extraktion stark verbleichter Schriften und geätzter Punktraster.
+    """
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    gray_f = gray.astype(np.float32)
+    mean = cv2.boxFilter(gray_f, cv2.CV_32F, (window_size, window_size))
+    sqr_mean = cv2.boxFilter(gray_f**2, cv2.CV_32F, (window_size, window_size))
+    std = np.sqrt(np.maximum(0, sqr_mean - mean**2))
+
+    R = 128.0
+    thresh = mean * (1.0 + k * (std / R - 1.0))
+    binary = np.where(gray_f >= thresh, 255, 0).astype(np.uint8)
+    return binary
+
+
 def _preprocess_for_dmtx(image: np.ndarray) -> np.ndarray:
     """
     Bereitet ein Bild für die DataMatrix-Erkennung vor (Schärfung + TopHat).
@@ -1465,6 +1513,18 @@ def _read_datamatrix(frame: np.ndarray) -> str | None:
             logger.info(f"DataMatrix gefunden (zxing-cpp + TopHat): {zxing_result}")
             return zxing_result
 
+        faded_img = _preprocess_faded_contrast(gray)
+        zxing_result = _try_zxing_dmtx(faded_img)
+        if zxing_result is not None:
+            logger.info(f"DataMatrix gefunden (zxing-cpp + FadedBoost): {zxing_result}")
+            return zxing_result
+
+        sauvola_img = _preprocess_sauvola(gray)
+        zxing_result = _try_zxing_dmtx(sauvola_img)
+        if zxing_result is not None:
+            logger.info(f"DataMatrix gefunden (zxing-cpp + Sauvola): {zxing_result}")
+            return zxing_result
+
     # ===== STUFE 1+: pylibdmtx Fallback (nur wenn zxing-cpp fehlschlägt) =====
     if not _load_dmtx():
         return None
@@ -2460,9 +2520,9 @@ def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray) -> dic
                     "verified": False,
                     "ocr_partial_display": ocr_text,
                 }
-        elif ocr_conf >= 0.85:
-            # Grid existiert, aber Rekonstruktion fehlgeschlagen → OCR ab 0.85
-            logger.info(f"OCR-Fallback (≥0.85 Konfidenz, Rekonstruktion fehlgeschlagen): '{ocr_text}' (Conf={ocr_conf:.2f})")
+        elif ocr_conf >= 0.75 and _is_valid_horden_code(ocr_text):
+            # Grid existiert, aber Rekonstruktion fehlgeschlagen → OCR ab 0.75 bei format-validem Code
+            logger.info(f"OCR-Fallback (Format-validiert ≥0.75, Rekonstruktion fehlgeschlagen): '{ocr_text}' (Conf={ocr_conf:.2f})")
             return {
                 "success": True,
                 "result": ocr_text,
