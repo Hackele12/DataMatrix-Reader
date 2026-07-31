@@ -100,6 +100,14 @@ except Exception as e:
     logger.error(f"Scanner Importfehler: {e}")
     sys.exit(1)
 
+# --- Scan-Logger laden ---
+try:
+    from scan_logger import ScanLogger
+    logger.info("ScanLogger-Modul geladen.")
+except Exception as e:
+    logger.error(f"ScanLogger Importfehler: {e}")
+    ScanLogger = None
+
 # --- App-Version ---
 APP_VERSION = "3.3"
 CONFIG_FILE = "config.json"
@@ -391,6 +399,14 @@ class AIVisionApp(ctk.CTk):
         self._scan_counter = 0
 
         self._build_ui()
+
+        # --- Scan-Logger initialisieren ---
+        if ScanLogger is not None:
+            master_log_dir = self._config.get("log_dir", r"U:\Temp\DataMatrixReader.logFiles")
+            self.scan_logger = ScanLogger(log_dir=master_log_dir)
+        else:
+            self.scan_logger = None
+            logger.warning("ScanLogger nicht verfügbar — Scan-Logging deaktiviert.")
 
     # ------------------------------------------------------------------ #
     #  UI Builder                                                          #
@@ -1090,16 +1106,9 @@ class AIVisionApp(ctk.CTk):
                 detection_conf = float(best_box.conf[0])
                 x1, y1, x2, y2 = map(int, best_box.xyxy[0])
                 detection_box = (x1, y1, x2, y2)
-                # Füge 20 Pixel Rand (Padding) hinzu
-                padding = 20
-                fh, fw = scan_snapshot.shape[:2]
-                x1 = max(0, x1 - padding)
-                y1 = max(0, y1 - padding)
-                x2 = min(fw, x2 + padding)
-                y2 = min(fh, y2 + padding)
-
-                scan_frame = scan_snapshot[y1:y2, x1:x2]
-                logger.info(f"KI hat Etikett gefunden! Konfidenz: {detection_conf:.2f}. Schneide auf {x2-x1}x{y2-y1} zu.")
+                # Mit Begradigung (Deskewing) ausschneiden
+                scan_frame = scanner.deskew_crop(scan_snapshot, detection_box, padding=60)
+                logger.info(f"KI hat Etikett gefunden! Konfidenz: {detection_conf:.2f}. Ausschneiden und Begradigen auf {scan_frame.shape[1]}x{scan_frame.shape[0]}.")
             else:
                 logger.warning("KI hat kein Etikett gefunden, scanne gesamtes Bild.")
 
@@ -1107,6 +1116,33 @@ class AIVisionApp(ctk.CTk):
         duration_ms = int((time.time() - start_time) * 1000)
         result["duration_ms"] = duration_ms
         logger.info(f"Scan Ergebnis: {result} (Dauer: {duration_ms}ms)")
+
+        # --- Scan-Logging (JSONL + Bild) ---
+        if self.scan_logger is not None:
+            timing_info = {
+                "total_ms": duration_ms,
+                "yolo_ms": 0,
+                "scan_ms": duration_ms,
+            }
+            detection_info = {
+                "yolo_conf": detection_conf,
+                "crop_size": [scan_frame.shape[1], scan_frame.shape[0]] if detection_box else None,
+                "label_detected": detection_box is not None,
+            }
+            meta_info = {
+                "camera_model": self.grabber.model_name if self.grabber else "",
+                "camera_serial": self.grabber.serial if self.grabber else "",
+                "exposure_us": float(self._config.get("last_exposure", 0)) * 1000.0,
+                "gain": float(self._config.get("last_gain", 0)),
+                "app_version": APP_VERSION,
+            }
+            self.scan_logger.log_scan(
+                scan_result=result,
+                frame=scan_snapshot,
+                timing=timing_info,
+                detection_info=detection_info,
+                meta=meta_info,
+            )
 
         # --- Active Learning: Auto-Save bei unsicherer Erkennung ---
         if result["success"] and detection_box is not None:
@@ -1238,6 +1274,14 @@ class AIVisionApp(ctk.CTk):
         self.status_label.configure(text=text, text_color=color)
 
     def on_closing(self):
+        # Session-Statistiken speichern
+        if hasattr(self, 'scan_logger') and self.scan_logger is not None:
+            self.scan_logger.save_session_summary()
+            stats = self.scan_logger.get_session_stats()
+            logger.info(
+                f"Session beendet: {stats['total_scans']} Scans, "
+                f"Erfolg: {stats.get('success_rate', 0):.1%}"
+            )
         self._stop_stream()
         self.destroy()
 

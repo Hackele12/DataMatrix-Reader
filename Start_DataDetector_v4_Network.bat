@@ -1,16 +1,16 @@
 @echo off
-title DataDetector Headless TCP Server - Watchdog [24/7]
+title DataDetector Headless Multi-Camera TCP Server - Watchdog [24/7]
 cd /d "%~dp0"
 
 :: ============================================================
-::  WATCHDOG: Startet die App automatisch neu nach jedem Crash
+::  WATCHDOG: Startet die Multi-Kamera App automatisch neu
 :: ============================================================
 
 :WATCHDOG_LOOP
 echo.
 echo ============================================================
-echo  DataDetector Headless Network Watchdog - %date% %time%
-echo  Starte TCP-Server an Port 9500...
+echo  DataDetector Headless Multi-Camera Watchdog - %date% %time%
+echo  Starte TCP-Server fuer Kamera 1 (Port 9500) und Kamera 2 (Port 9501)...
 echo  (Dieses Fenster schliessen = Server beenden)
 echo ============================================================
 echo.
@@ -20,8 +20,8 @@ if exist ".venv\Scripts\activate.bat" (
     call ".venv\Scripts\activate.bat"
 )
 
-:: Headless App starten
-python vision_app_v4_network.py
+:: Multi-Kamera App mit zentraler config.json starten
+python vision_app_v4_network.py config.json
 
 :: Wenn wir hier ankommen, ist die App gestorben
 echo.

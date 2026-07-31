@@ -1,14 +1,13 @@
 """
-vision_app_v4_network.py — Headless Industrial TCP/IP Scanner (v4.0)
+vision_app_v4_network.py — Unified Multi-Camera Headless Industrial TCP/IP Scanner (v4.0)
 
-Diese Version läuft komplett ohne grafische Benutzeroberfläche (GUI) im Hintergrund.
-Sie ist für den produktiven 24/7-Dauerbetrieb optimiert:
-1. Startet die IDS-Peak-Kamera und hält sie betriebsbereit.
-2. Lädt das lokale YOLO-KI-Modell zur Etiketten-Erkennung.
-3. Lauscht als TCP-Server auf Port 9500.
-4. Bei Empfang von "+" wird ein Foto geschossen, per KI + Dual-Validation
-   (DataMatrix + EasyOCR) ausgewertet und das Ergebnis mit Carriage Return (\r) zurückgesendet.
-
+Diese Version steuert BEIDE IDS-GigE-Kameras (Cam1: 172.31.146.192 @ Port 9500, Cam2: 172.31.146.193 @ Port 9501)
+in EINEM einzigen Python-Prozess:
+1. Lädt das lokale YOLO-KI-Modell EINMALIG für alle Kameras (speicherschonend).
+2. Verknüpft jede Kamera zielgerichtet über ihre IP-Adresse (kein vertauschter Zugriff).
+3. Startet dedizierte TCP-Server-Threads auf den jeweiligen Ports (z.B. 9500 & 9501).
+4. Bei Empfang von "+" verarbeitet der jeweilige Port das Bild der zugehörigen Kamera
+   mit Dual-Validation (DataMatrix + EasyOCR) und antwortet mit Carriage Return (\r).
 """
 
 import os
@@ -19,51 +18,34 @@ import logging
 import threading
 import time
 import socket
+import struct
+import warnings
 from logging.handlers import RotatingFileHandler
 import cv2
 import numpy as np
-import warnings
 
 # PyTorch/User-Warnings auf CPU unterdrücken für sauberere Konsolenausgabe
 warnings.filterwarnings("ignore", category=UserWarning)
 
-
-# --- Config & CLI Arguments laden ---
+# --- Config Laden ---
 CONFIG_FILE = "config.json"
 if len(sys.argv) > 1:
     CONFIG_FILE = sys.argv[1]
 
-# Default-Werte
-PORT = 9500
-log_file = "vision_network_v4.log"
-
-try:
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r") as f:
-            cfg_temp = json.load(f)
-            PORT = cfg_temp.get("port", PORT)
-            log_file = cfg_temp.get("log_file", f"vision_network_{PORT}.log")
-except Exception as e:
-    print(f"[WARN] Fehler beim Vorab-Laden der Config '{CONFIG_FILE}': {e}")
-
 # --- Logging einrichten ---
 logger = logging.getLogger("VisionNetworkApp")
 logger.setLevel(logging.INFO)
-
-# Formatter für Log-Meldungen
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
-# Konsole Handler
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
-# Datei Handler (rotierend, maximal 5 Dateien à 5 MB)
-file_handler = RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
+file_handler = RotatingFileHandler("vision_network_main.log", maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
-# --- Windows Crash-Dialog unterdrücken (24/7 Betrieb) ---
+# --- Windows Crash-Dialog unterdrücken ---
 try:
     if sys.platform == "win32":
         SEM_NOGPFAULTERRORBOX = 0x0002
@@ -93,28 +75,62 @@ except Exception as e:
     logger.error(f"Scanner Importfehler: {e}")
     sys.exit(1)
 
-YOLO = None
+# --- Scan-Logger laden ---
+try:
+    import scan_logger
+    from scan_logger import ScanLogger, resolve_log_directory
+    logger.info("ScanLogger-Modul geladen.")
+except Exception as e:
+    logger.error(f"ScanLogger Importfehler: {e}")
+    ScanLogger = None
+    resolve_log_directory = lambda p: p
 
 
-def _load_config() -> dict:
-    """Lädt die Kameraeinstellungen."""
+def load_master_config(config_path: str) -> tuple[list[dict], str]:
+    """Lädt die Liste aller Kamera-Konfigurationen und den Master-Log-Pfad aus config.json."""
+    default_log_dir = r"U:\Temp\DataMatrixReader.logFiles"
+    default_cams = [
+        {
+            "id": "cam1",
+            "name": "Kamera 1",
+            "camera_ip": "172.31.146.192",
+            "port": 9500,
+            "last_exposure": 6.0,
+            "last_gain": 2.0,
+            "log_file": "vision_network_cam1.log"
+        },
+        {
+            "id": "cam2",
+            "name": "Kamera 2",
+            "camera_ip": "172.31.146.193",
+            "port": 9501,
+            "last_exposure": 6.0,
+            "last_gain": 2.0,
+            "log_file": "vision_network_cam2.log"
+        }
+    ]
+    if not os.path.exists(config_path):
+        logger.warning(f"Config-Datei '{config_path}' nicht gefunden. Verwende Default Multi-Cam Config.")
+        return default_cams, default_log_dir
+
     try:
-        if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, "r") as f:
-                cfg = json.load(f)
-                logger.info(f"Konfiguration geladen: {cfg}")
-                return cfg
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            master_log_dir = data.get("log_dir", default_log_dir)
+            if "cameras" in data and isinstance(data["cameras"], list):
+                return data["cameras"], master_log_dir
+            elif "camera_ip" in data:
+                return [data], master_log_dir
     except Exception as e:
-        logger.error(f"Config laden fehlgeschlagen: {e}")
-    return {"last_exposure": 4.0, "last_gain": 2.0}
+        logger.error(f"Fehler beim Lesen der Config '{config_path}': {e}")
+    return default_cams, default_log_dir
 
 
 class IDSFrameGrabber:
-    """
-    IDS peak SDK Frame-Grabber:
-    Holt im Hintergrund-Thread kontinuierlich Live-Bilder der Kamera.
-    """
-    def __init__(self):
+    """Frame-Grabber für eine spezifische IDS-Kamera (gezielt per IP gematcht)."""
+    def __init__(self, camera_ip: str, cam_name: str = "Kamera"):
+        self.camera_ip = camera_ip
+        self.cam_name = cam_name
         self.frame = None
         self.running = False
         self._lock = threading.Lock()
@@ -129,70 +145,65 @@ class IDSFrameGrabber:
 
     def start(self) -> bool:
         if not IDS_AVAILABLE:
-            logger.error("Kamera-Start unmöglich: IDS peak SDK fehlt.")
+            logger.error(f"[{self.cam_name}] Start unmöglich: IDS peak SDK fehlt.")
             return False
         try:
-            ids_peak.Library.Initialize()
             dm = ids_peak.DeviceManager.Instance()
-
-            # --- Unicast-Erkennung für Netzwerk-Kameras konfigurieren ---
-            config = _load_config()
-            camera_ip = config.get("camera_ip")
-            if camera_ip:
-                import struct as _struct
-                import socket as _socket
-                # IP-Adresse in 32-Bit Integer konvertieren (GigE Vision Standard)
-                ip_int = _struct.unpack("!I", _socket.inet_aton(camera_ip))[0]
-                logger.info(f"Konfiguriere Unicast-Suche für Kamera-IP: {camera_ip} (0x{ip_int:08X})")
-                
-                # Erste Update-Runde, damit Interfaces geöffnet werden
+            
+            # Unicast IP-Adresse im DeviceManager registrieren
+            if self.camera_ip:
+                ip_int = struct.unpack("!I", socket.inet_aton(self.camera_ip))[0]
                 dm.Update()
-                
-                try:
-                    systems = dm.Systems()
-                    sys_count = systems.size() if hasattr(systems, 'size') else len(systems)
-                    for sys_idx in range(sys_count):
-                        system = systems[sys_idx]
-                        sys_name = system.DisplayName()
-                        if "U3V" in sys_name or "USB" in sys_name:
-                            continue
-                        interfaces = system.Interfaces()
-                        if_count = interfaces.size() if hasattr(interfaces, 'size') else len(interfaces)
-                        for if_idx in range(if_count):
-                            iface_desc = interfaces[if_idx]
-                            iface_name = iface_desc.DisplayName()
-                            if "Wi-Fi" in iface_name:
-                                continue
-                            try:
-                                opened = iface_desc.OpenedInterface()
-                                nodemaps = opened.NodeMaps()
-                                nm_count = nodemaps.size() if hasattr(nodemaps, 'size') else len(nodemaps)
-                                if nm_count > 0:
-                                    nodemap = nodemaps[0]
-                                    if nodemap.HasNode("GevDiscoveryUnicastIPAddressToAdd"):
-                                        nodemap.FindNode("GevDiscoveryUnicastIPAddressToAdd").SetValue(ip_int)
-                                        nodemap.FindNode("GevDiscoveryUnicastIPAddressAdd").Execute()
-                                        logger.info(f"Unicast-IP {camera_ip} für Interface '{iface_name}' registriert.")
-                            except Exception as e_iface:
-                                logger.warning(f"Unicast-Setup auf '{iface_name}' fehlgeschlagen: {e_iface}")
-                except Exception as e_systems:
-                    logger.warning(f"Fehler bei der Unicast-Konfiguration: {e_systems}")
-
+                for sys_obj in dm.Systems():
+                    for iface in sys_obj.Interfaces():
+                        try:
+                            op = iface.OpenedInterface()
+                            for nm in op.NodeMaps():
+                                if nm.HasNode("GevDiscoveryUnicastIPAddressToAdd"):
+                                    nm.FindNode("GevDiscoveryUnicastIPAddressToAdd").SetValue(ip_int)
+                                    nm.FindNode("GevDiscoveryUnicastIPAddressAdd").Execute()
+                        except Exception:
+                            pass
             dm.Update()
-            if dm.Devices().empty():
-                logger.error("Keine IDS-Kamera im Netzwerk/USB gefunden!")
-                ids_peak.Library.Close()
+
+            matched_desc = None
+            matched_device = None
+            matched_nodemap = None
+
+            # Gezielt nach der Kamera suchen, deren IP genau self.camera_ip entspricht
+            for desc in dm.Devices():
+                if not desc.IsOpenable():
+                    continue
+                try:
+                    dev = desc.OpenDevice(ids_peak.DeviceAccessType_Control)
+                    nm = dev.RemoteDevice().NodeMaps()[0]
+                    dev_ip = None
+                    if nm.HasNode("GevCurrentIPAddress"):
+                        ip_val = nm.FindNode("GevCurrentIPAddress").Value()
+                        dev_ip = socket.inet_ntoa(struct.pack("!I", ip_val))
+                    
+                    if dev_ip == self.camera_ip:
+                        matched_desc = desc
+                        matched_device = dev
+                        matched_nodemap = nm
+                        logger.info(f"[{self.cam_name}] Kamera-Match erfolgreich! IP {dev_ip} (S/N: {desc.SerialNumber()})")
+                        break
+                    else:
+                        # IP passt nicht -> Device wieder freigeben für die andere Kamera
+                        del dev
+                except Exception as e_open:
+                    logger.warning(f"[{self.cam_name}] Fehler beim Prüfen der Kamera S/N {desc.SerialNumber()}: {e_open}")
+
+            if matched_device is None:
+                logger.error(f"[{self.cam_name}] Keine passende Kamera mit IP {self.camera_ip} im Netzwerk gefunden!")
                 return False
 
-            desc = dm.Devices()[0]
-            self.model_name = desc.ModelName()
-            self.serial = desc.SerialNumber()
-            logger.info(f"Verbinde mit IDS Kamera: {self.model_name} (S/N: {self.serial})")
+            self._device = matched_device
+            self._nodemap = matched_nodemap
+            self.model_name = matched_desc.ModelName()
+            self.serial = matched_desc.SerialNumber()
 
-            self._device = desc.OpenDevice(ids_peak.DeviceAccessType_Control)
-            self._nodemap = self._device.RemoteDevice().NodeMaps()[0]
             self._ds = self._device.DataStreams()[0].OpenDataStream()
-
             payload = self._nodemap.FindNode("PayloadSize").Value()
             buf_count = max(self._ds.NumBuffersAnnouncedMinRequired(), 3)
             for _ in range(buf_count):
@@ -208,11 +219,10 @@ class IDSFrameGrabber:
             self.running = True
             self._thread = threading.Thread(target=self._grab_loop, daemon=True)
             self._thread.start()
-            logger.info("IDS Kamera erfolgreich gestartet und erfasst Live-Bilder.")
+            logger.info(f"[{self.cam_name}] Kamera gestartet. Erfasst kontinuierlich Bilder.")
             return True
         except Exception as e:
-            logger.error(f"IDS Kamera Start fehlgeschlagen: {e}")
-            self._cleanup_partial()
+            logger.error(f"[{self.cam_name}] Start fehlgeschlagen: {e}")
             return False
 
     def _grab_loop(self):
@@ -247,18 +257,18 @@ class IDSFrameGrabber:
             node = self._nodemap.FindNode("ExposureTime")
             val = min(max(exposure_us, node.Minimum()), node.Maximum())
             node.SetValue(val)
-            logger.info(f"Belichtungszeit gesetzt auf: {val:.0f} us")
+            logger.info(f"[{self.cam_name}] Belichtungszeit gesetzt auf: {val:.0f} us")
         except Exception as e:
-            logger.warning(f"Belichtungszeit konnte nicht gesetzt werden: {e}")
+            logger.warning(f"[{self.cam_name}] Belichtungszeit Fehler: {e}")
 
     def set_gain(self, gain: float):
         try:
             node = self._nodemap.FindNode("Gain")
             val = min(max(gain, node.Minimum()), node.Maximum())
             node.SetValue(val)
-            logger.info(f"Gain gesetzt auf: {val:.2f}")
+            logger.info(f"[{self.cam_name}] Gain gesetzt auf: {val:.2f}")
         except Exception as e:
-            logger.warning(f"Gain konnte nicht gesetzt werden: {e}")
+            logger.warning(f"[{self.cam_name}] Gain Fehler: {e}")
 
     def stop(self):
         self.running = False
@@ -292,246 +302,213 @@ class IDSFrameGrabber:
             self._device.Close()
         except Exception:
             pass
-        try:
-            ids_peak.Library.Close()
-        except Exception:
-            pass
         self.frame = None
-        logger.info("IDS Kamera geschlossen.")
-
-    def _cleanup_partial(self):
-        try:
-            ids_peak.Library.Close()
-        except Exception:
-            pass
+        logger.info(f"[{self.cam_name}] Kamera-Stream geschlossen.")
 
 
-class HeadlessScanner:
-    def __init__(self):
-        self.config = _load_config()
+class CameraService:
+    """Service für eine einzelne Kamera inklusive KI-Auswertung und TCP-Server."""
+    def __init__(self, cam_cfg: dict, shared_yolo_model, master_log_dir: str = r"U:\Temp\DataMatrixReader.logFiles"):
+        self.cfg = cam_cfg
+        self.cam_id = cam_cfg.get("id", "cam")
+        self.cam_name = cam_cfg.get("name", self.cam_id)
+        self.ip = cam_cfg.get("camera_ip", "")
+        self.port = int(cam_cfg.get("port", 9500))
+        self.model = shared_yolo_model
         self.grabber = None
-        self.model = None
         self._scan_counter = 0
-        
-        # Active Learning Setup
-        self._auto_train_dir = "auto_training_data"
+
+        # Dedicated Scan Logger per Camera im dynamisch aufgelösten Log-Pfad
+        if ScanLogger is not None:
+            resolved_base = resolve_log_directory(master_log_dir)
+            cam_log_dir = os.path.join(resolved_base, self.cam_id)
+            self.scan_logger = ScanLogger(log_dir=cam_log_dir)
+        else:
+            self.scan_logger = None
+
+        # Active Learning Setup per Camera
+        self._auto_train_dir = os.path.join("auto_training_data", self.cam_id)
         self._auto_train_max = 1000
         os.makedirs(os.path.join(self._auto_train_dir, "images"), exist_ok=True)
         os.makedirs(os.path.join(self._auto_train_dir, "labels"), exist_ok=True)
         self._auto_train_count = len(os.listdir(os.path.join(self._auto_train_dir, "images")))
-        logger.info(f"Active Learning initialisiert: {self._auto_train_count} Bilder vorhanden.")
 
-    def initialize_system(self) -> bool:
-        """Lädt YOLO-Modell und startet die Kamera."""
-        logger.info("System-Initialisierung gestartet...")
-        
-        # 1) YOLO laden
-        try:
-            from ultralytics import YOLO as _YOLO
-            global YOLO
-            YOLO = _YOLO
-            
-            app_dir = os.path.dirname(os.path.abspath(__file__))
-            model_path = os.path.join(app_dir, "runs", "detect", "training_runs", "horde_model", "weights", "best.pt")
-            
-            if os.path.exists(model_path):
-                self.model = YOLO(model_path)
-                logger.info(f"Trained YOLO Modell geladen: {model_path}")
-            else:
-                base_model_path = os.path.join(app_dir, "yolov10n.pt")
-                self.model = YOLO(base_model_path)
-                logger.warning(f"Kein trainiertes Modell gefunden, nutze Standard YOLO: {base_model_path}")
-        except Exception as e:
-            logger.error(f"YOLO-Modell konnte nicht geladen werden: {e}")
-            return False
-
-        # 2) Kamera starten
-        self.grabber = IDSFrameGrabber()
+    def start_camera(self) -> bool:
+        self.grabber = IDSFrameGrabber(camera_ip=self.ip, cam_name=self.cam_name)
         if not self.grabber.start():
-            logger.error("Kamera-Verbindung fehlgeschlagen!")
             return False
 
-        # Einstellungen anwenden
-        try:
-            exp_val = float(self.config.get("last_exposure", 4.0))
-            gain_val = float(self.config.get("last_gain", 2.0))
-            self.grabber.set_exposure(exp_val * 1000.0) # ms -> us
-            self.grabber.set_gain(gain_val)
-        except Exception as e:
-            logger.warning(f"Fehler beim Anwenden der Kamera-Settings: {e}")
-
-        logger.info("System erfolgreich initialisiert und bereit für Scans!")
+        exp_val = float(self.cfg.get("last_exposure", 4.0))
+        gain_val = float(self.cfg.get("last_gain", 2.0))
+        self.grabber.set_exposure(exp_val * 1000.0)
+        self.grabber.set_gain(gain_val)
         return True
 
     def process_scan(self) -> str:
-        """Führt einen Scan-Vorgang aus und gibt das Ergebnis zurück."""
         start_time = time.time()
-        
-        # 1) Bild abholen
-        scan_snapshot = self.grabber.get_frame()
+        scan_snapshot = self.grabber.get_frame() if self.grabber else None
         if scan_snapshot is None:
-            logger.error("Konnte kein Bild von der Kamera abrufen!")
+            logger.error(f"[{self.cam_name}] Konnte kein Bild von der Kamera abrufen!")
             return "ERROR_NO_FRAME"
 
-        # 2) KI-Detektion (YOLO)
         detection_box = None
         detection_conf = 0.0
         scan_frame = scan_snapshot
-        
+        label_detected = False
+        crop_size = None
+
+        t_yolo_start = time.time()
         try:
-            results = self.model(scan_snapshot, verbose=False)
-            if results and len(results[0].boxes) > 0:
-                best_box = max(results[0].boxes, key=lambda b: float(b.conf[0]))
-                detection_conf = float(best_box.conf[0])
-                x1, y1, x2, y2 = map(int, best_box.xyxy[0])
-                detection_box = (x1, y1, x2, y2)
-                
-                # Mit Rand ausschneiden
-                padding = 20
-                fh, fw = scan_snapshot.shape[:2]
-                x1 = max(0, x1 - padding)
-                y1 = max(0, y1 - padding)
-                x2 = min(fw, x2 + padding)
-                y2 = min(fh, y2 + padding)
-                
-                scan_frame = scan_snapshot[y1:y2, x1:x2]
-                logger.info(f"KI: Etikett gefunden (Konfidenz: {detection_conf:.2f}). Ausschneiden auf {x2-x1}x{y2-y1}.")
-            else:
-                logger.warning("KI: Kein Etikett gefunden, scanne komplettes Bild.")
+            if self.model:
+                results = self.model(scan_snapshot, verbose=False)
+                if results and len(results[0].boxes) > 0:
+                    best_box = max(results[0].boxes, key=lambda b: float(b.conf[0]))
+                    detection_conf = float(best_box.conf[0])
+                    x1, y1, x2, y2 = map(int, best_box.xyxy[0])
+                    detection_box = (x1, y1, x2, y2)
+                    label_detected = True
+                    scan_frame = scanner.deskew_crop(scan_snapshot, detection_box, padding=60)
+                    crop_size = [scan_frame.shape[1], scan_frame.shape[0]]
+                    logger.info(f"[{self.cam_name}] KI Etikett gefunden (Konfidenz: {detection_conf:.2f}). Crop: {crop_size[0]}x{crop_size[1]}.")
         except Exception as e:
-            logger.error(f"Fehler bei KI-Auswertung: {e}. Scanne komplettes Bild.")
+            logger.error(f"[{self.cam_name}] Fehler bei KI-Auswertung: {e}")
+        t_yolo_ms = int((time.time() - t_yolo_start) * 1000)
 
-        # 3) Dual-Validation ausführen (scanner.py)
+        t_scan_start = time.time()
         result = scanner.scan(scan_frame)
+        t_scan_ms = int((time.time() - t_scan_start) * 1000)
         duration_ms = int((time.time() - start_time) * 1000)
-        logger.info(f"Scan abgeschlossen. Dauer: {duration_ms}ms, Ergebnis: {result}")
+        result["duration_ms"] = duration_ms
+        logger.info(f"[{self.cam_name}] Scan fertig ({duration_ms}ms): {result}")
 
-        # 4) Active Learning (Auto-Save)
-        if result["success"] and detection_box is not None:
-            self._scan_counter += 1
-            should_save = (0.15 <= detection_conf <= 0.60) or (self._scan_counter % 20 == 0)
-            if should_save and self._auto_train_count < self._auto_train_max:
-                self._auto_save_training(scan_snapshot, detection_box)
+        if self.scan_logger:
+            self.scan_logger.log_scan(
+                scan_result=result,
+                frame=scan_snapshot,
+                timing={"total_ms": duration_ms, "yolo_ms": t_yolo_ms, "scan_ms": t_scan_ms},
+                detection_info={"yolo_conf": detection_conf, "crop_size": crop_size, "label_detected": label_detected},
+                meta={"camera_model": self.grabber.model_name if self.grabber else "", "camera_serial": self.grabber.serial if self.grabber else "", "port": self.port}
+            )
 
         if result["success"]:
             return result["result"]
         else:
             return "ERROR"
 
-    def _auto_save_training(self, full_frame, box):
+    def run_tcp_server(self):
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(('0.0.0.0', self.port))
+        server.listen(5)
+        logger.info(f"[{self.cam_name}] TCP SERVER LAUSCHT AUF PORT {self.port}")
+
+        while True:
+            try:
+                conn, addr = server.accept()
+                conn.settimeout(1.0)
+                logger.info(f"[{self.cam_name}] Client verbunden: {addr}")
+                try:
+                    while True:
+                        try:
+                            data = conn.recv(1024)
+                            if not data:
+                                break
+                            if b"+" in data:
+                                logger.info(f"[{self.cam_name}] Trigger '+' empfangen. Starte Auswertung...")
+                                code = self.process_scan()
+                                response_bytes = b"\x02" + code.encode("utf-8") + b"\r\n\x04"
+                                conn.sendall(response_bytes)
+                            else:
+                                conn.sendall(b"\x02ERROR_UNKNOWN_COMMAND\r\n\x04")
+                        except socket.timeout:
+                            continue
+                except Exception as e:
+                    logger.error(f"[{self.cam_name}] Kommunikationsfehler: {e}")
+                finally:
+                    conn.close()
+            except Exception as e:
+                logger.error(f"[{self.cam_name}] Server-Loop beendet: {e}")
+                break
         try:
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            img_name = f"auto_{timestamp}_{self._auto_train_count}.jpg"
-            lbl_name = f"auto_{timestamp}_{self._auto_train_count}.txt"
+            server.close()
+        except Exception:
+            pass
 
-            img_path = os.path.join(self._auto_train_dir, "images", img_name)
-            lbl_path = os.path.join(self._auto_train_dir, "labels", lbl_name)
-
-            cv2.imwrite(img_path, full_frame)
-
-            fh, fw = full_frame.shape[:2]
-            x1, y1, x2, y2 = box
-            x_center = ((x1 + x2) / 2.0) / fw
-            y_center = ((y1 + y2) / 2.0) / fh
-            w = (x2 - x1) / fw
-            h = (y2 - y1) / fh
-
-            with open(lbl_path, "w") as f:
-                f.write(f"0 {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}\n")
-
-            self._auto_train_count += 1
-            logger.info(f"Active Learning: Bild #{self._auto_train_count} gespeichert ({img_name})")
-        except Exception as e:
-            logger.error(f"Active Learning Speichern fehlgeschlagen: {e}")
-
-    def shutdown(self):
+    def stop(self):
         if self.grabber:
             self.grabber.stop()
-            logger.info("Kamerasystem heruntergefahren.")
 
 
-def start_tcp_server(scanner_system: HeadlessScanner):
-    """Startet den TCP Server auf Port 9500 und wartet auf Verbindungen."""
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # SO_REUSEADDR setzen, um "Address already in use" beim Neustart zu vermeiden
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # Binden an alle IPs des Rechners auf Port 9500
-    server.bind(('0.0.0.0', PORT))
-    server.listen(5)
-    logger.info(f"==================================================")
-    logger.info(f"TCP SERVER LAUSCHT AUF PORT {PORT}")
-    logger.info(f"==================================================")
+def main():
+    print(f"==================================================")
+    print(f"    DATA DETECTOR MULTI-CAMERA SERVER (v4.0)")
+    print(f"    Konfigurationsdatei: {CONFIG_FILE}")
+    print(f"==================================================\n")
 
-    while True:
+    cams_cfg, master_log_dir = load_master_config(CONFIG_FILE)
+    logger.info(f"Master Log-Verzeichnis: {master_log_dir}")
+    logger.info(f"Geladene Kameras ({len(cams_cfg)}): {[c.get('name') for c in cams_cfg]}")
+
+    # 1) IDS SDK global initialisieren
+    if IDS_AVAILABLE:
         try:
-            conn, addr = server.accept()
-            # Setze ein kurzes Timeout (z. B. 1.0 Sekunde) für recv, damit wir regelmäßig
-            # auf Server-Beendigung reagieren können, ohne die Verbindung zu blockieren.
-            conn.settimeout(1.0)
-            logger.info(f"Verbindung hergestellt von Client: {addr}")
-            
-            try:
-                # Schleife für persistente Kommunikation über dieselbe Verbindung
-                while True:
-                    try:
-                        data = conn.recv(1024)
-                        if not data:
-                            logger.info(f"Client {addr} hat die Verbindung getrennt (EOF).")
-                            break
-                        
-                        logger.info(f"Empfangene Rohdaten: {repr(data)}")
-                        
-                        # Prüfen, ob das Triggersignal '+' in den empfangenen Daten enthalten ist
-                        if b"+" in data:
-                            logger.info("Trigger-Signal '+' empfangen. Starte Auswertung...")
-                            # Scan durchführen
-                            code = scanner_system.process_scan()
-                            
-                            # Antwort im Protokollformat vorbereiten: <STX>[CODE]<CR><LF><EOT>
-                            response_bytes = b"\x02" + code.encode("utf-8") + b"\r\n\x04"
-                            logger.info(f"Sende Antwort an Client: {repr(response_bytes)}")
-                            
-                            conn.sendall(response_bytes)
-                        else:
-                            logger.warning("Unbekannter Befehl oder falsches Format empfangen.")
-                            response_bytes = b"\x02ERROR_UNKNOWN_COMMAND\r\n\x04"
-                            conn.sendall(response_bytes)
-                    except socket.timeout:
-                        # Timeout ist bei einer persistenten Verbindung normal, solange der Client verbunden ist
-                        continue
-            except Exception as e:
-                logger.error(f"Fehler bei der Kommunikation mit {addr}: {e}")
-            finally:
-                conn.close()
-                logger.info(f"Verbindung zu {addr} geschlossen.\n")
-                
-        except KeyboardInterrupt:
-            logger.info("Server wird beendet (KeyboardInterrupt)...")
-            break
+            ids_peak.Library.Initialize()
         except Exception as e:
-            logger.error(f"Fehler im accept-Loop des Servers: {e}")
-            time.sleep(1)
+            logger.error(f"IDS SDK Initialisierung fehlgeschlagen: {e}")
+
+    # 2) YOLO Modell EINMALIG im Hauptthread laden
+    shared_yolo_model = None
+    try:
+        from ultralytics import YOLO as _YOLO
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        model_path = os.path.join(app_dir, "runs", "detect", "training_runs", "horde_model", "weights", "best.pt")
+        if os.path.exists(model_path):
+            shared_yolo_model = _YOLO(model_path)
+            logger.info(f"Trained YOLO Modell geladen: {model_path}")
+        else:
+            base_path = os.path.join(app_dir, "yolov10n.pt")
+            shared_yolo_model = _YOLO(base_path)
+            logger.warning(f"Standard YOLO Modell geladen: {base_path}")
+    except Exception as e:
+        logger.error(f"YOLO konnte nicht geladen werden: {e}")
+
+    # 3) Services für alle Kameras initialisieren und starten
+    services = []
+    server_threads = []
+
+    for cam_cfg in cams_cfg:
+        srv = CameraService(cam_cfg, shared_yolo_model, master_log_dir=master_log_dir)
+        if srv.start_camera():
+            services.append(srv)
+            t = threading.Thread(target=srv.run_tcp_server, daemon=True)
+            t.start()
+            server_threads.append(t)
+        else:
+            logger.error(f"Kamera '{cam_cfg.get('name')}' ({cam_cfg.get('camera_ip')}) konnte nicht gestartet werden!")
+
+    if not services:
+        logger.error("Keine Kamera erfolgreich gestartet. Programm wird beendet.")
+        if IDS_AVAILABLE:
+            ids_peak.Library.Close()
+        sys.exit(1)
+
+    logger.info("Multi-Kamera System bereit und lauscht auf allen konfigurierten Ports!")
 
     try:
-        server.close()
-    except Exception:
-        pass
+        while True:
+            time.sleep(1.0)
+    except KeyboardInterrupt:
+        logger.info("Beende Multi-Kamera Server...")
+    finally:
+        for srv in services:
+            srv.stop()
+        if IDS_AVAILABLE:
+            try:
+                ids_peak.Library.Close()
+            except Exception:
+                pass
+        logger.info("Alle Systeme sauber heruntergefahren.")
 
 
 if __name__ == "__main__":
-    print(f"               HEADLESS TCP SCANNER (v4.0)")
-    print(f"   Konfiguration: {CONFIG_FILE}")
-    print(f"   Logdatei:      {log_file}")
-    print(f"   TCP-Port:      {PORT}\n")
-
-    scanner_app = HeadlessScanner()
-    if not scanner_app.initialize_system():
-        logger.error("Konnte das Kamerasystem oder das Modell nicht initialisieren. Programm beendet.")
-        sys.exit(1)
-
-    try:
-        start_tcp_server(scanner_app)
-    finally:
-        logger.info("Räume Ressourcen auf...")
-        scanner_app.shutdown()
-        logger.info("Programm sauber beendet.")
+    main()

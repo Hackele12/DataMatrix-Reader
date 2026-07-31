@@ -27,7 +27,7 @@ _zxing_available = False
 _zxing_loaded = False
 
 # --- Schalter für zxing-cpp Fast-Path Integration ---
-USE_ZXING_FASTPATH = False
+USE_ZXING_FASTPATH = True
 
 # --- Historie der letzten erfolgreichen Scans für Gitter-Rekonstruktion ---
 _recent_scans = []
