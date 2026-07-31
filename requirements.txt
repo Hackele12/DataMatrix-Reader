@@ -1,4 +1,4 @@
-# Core dependencies for DataDetector v4
+# Core dependencies for DataDetector v5
 opencv-python
 numpy
 pylibdmtx
@@ -8,3 +8,5 @@ pillow
 ids_peak
 ids_peak_ipl
 customtkinter
+zxing-cpp
+

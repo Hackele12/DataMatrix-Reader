@@ -23,6 +23,11 @@ logger = logging.getLogger(__name__)
 _ocr_reader = None
 _dmtx_available = False
 _dmtx_loaded = False
+_zxing_available = False
+_zxing_loaded = False
+
+# --- Schalter für zxing-cpp Fast-Path Integration ---
+USE_ZXING_FASTPATH = False
 
 # --- Historie der letzten erfolgreichen Scans für Gitter-Rekonstruktion ---
 _recent_scans = []
@@ -30,6 +35,67 @@ _recent_scans = []
 # --- Erlaubte Zeichen für Horden-Codes ---
 ALLOWED_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 REQUIRED_LENGTH = 4
+
+
+def _load_zxing():
+    """
+    Lädt die 'zxingcpp'-Bibliothek bei Bedarf (Lazy-Loading).
+    
+    Returns:
+        bool: True, wenn die Bibliothek erfolgreich geladen wurde, sonst False.
+    """
+    global _zxing_available, _zxing_loaded
+    if not _zxing_loaded:
+        try:
+            import zxingcpp  # noqa: F401
+            _zxing_available = True
+            logger.info("zxingcpp erfolgreich geladen.")
+        except Exception as e:
+            logger.warning(f"zxingcpp konnte nicht geladen werden: {e}.")
+            _zxing_available = False
+        _zxing_loaded = True
+    return _zxing_available
+
+
+def _try_decode_zxing(frame: np.ndarray) -> str | None:
+    """
+    Versucht ein Bild per zxing-cpp mit verschiedenen Binarisierern zu dekodieren.
+    Konfiguration: try_rotate=True, try_downscale=True, try_invert=True
+    Binarisierer: LocalAverage, GlobalHistogram, FixedThreshold
+    """
+    if not _load_zxing():
+        return None
+    try:
+        import zxingcpp
+
+        if len(frame.shape) == 3:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = frame
+
+        binarizers = [
+            zxingcpp.Binarizer.LocalAverage,
+            zxingcpp.Binarizer.GlobalHistogram,
+            zxingcpp.Binarizer.FixedThreshold,
+        ]
+
+        for binarizer in binarizers:
+            res = zxingcpp.read_barcode(
+                gray,
+                formats=zxingcpp.BarcodeFormat.DataMatrix,
+                try_rotate=True,
+                try_downscale=True,
+                try_invert=True,
+                binarizer=binarizer,
+            )
+            if res and res.valid and res.text:
+                candidate = _clean_to_4chars(res.text.strip())
+                if candidate is not None:
+                    logger.info(f"zxing-cpp DataMatrix gefunden (Binarisierer {binarizer}): {candidate}")
+                    return candidate
+    except Exception as e:
+        logger.debug(f"zxing-cpp Dekodierungsfehler: {e}")
+    return None
 
 
 def _load_dmtx():
@@ -1300,6 +1366,12 @@ def _read_datamatrix(frame: np.ndarray) -> str | None:
     Returns:
         str | None: Der 4-stellige Code oder None bei Fehlschlag.
     """
+    # 0. zxing-cpp Fast-Path Integration (wenn USE_ZXING_FASTPATH aktiv)
+    if USE_ZXING_FASTPATH:
+        zxing_res = _try_decode_zxing(frame)
+        if zxing_res is not None:
+            return zxing_res
+
     if not _load_dmtx():
         return None
 
