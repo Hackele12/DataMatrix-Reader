@@ -251,18 +251,32 @@ def _preprocess_ocr_variants(image: np.ndarray, fast_mode: bool = True) -> list[
     return variants
 
 
+def _preprocess_tophat(image: np.ndarray) -> np.ndarray:
+    """
+    Entfernt Spiegelungen und Glanzstellen auf Metall- und Plastiketiketten per Top-Hat-Filter.
+    Isoliert helle Strukturen und neutralisiert großflächigen Glanz.
+    """
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    tophat = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, kernel)
+    enhanced = cv2.addWeighted(gray, 1.0, tophat, 1.5, 0)
+    return _sharpen(enhanced)
+
+
 def _preprocess_for_dmtx(image: np.ndarray) -> np.ndarray:
     """
-    Bereitet ein Bild für die DataMatrix-Erkennung vor (Schärfung).
+    Bereitet ein Bild für die DataMatrix-Erkennung vor (Schärfung + TopHat).
     
     Args:
         image (np.ndarray): Das Originalbild.
         
     Returns:
-        np.ndarray: Das geschärfte Bild.
+        np.ndarray: Das vorverarbeitete Bild.
     """
-    sharpened = _sharpen(image)
-    return sharpened
+    return _preprocess_tophat(image)
 
 
 # --- OCR-Zeichen-Normalisierung (spezifisch für Horden-Format ^[ABPW][0-9]{3}$) ---
@@ -1360,6 +1374,17 @@ def _try_reconstruct(frame: np.ndarray, ocr_text: str | None,
             )
             is_valid = True
 
+    # Stufe 5: OCR-Partial (3-stelliger Teilcode wie W03?) & Ziel-Matching des 10x10 Gitters
+    # Erfordert ausreichenden Abstand zum zweitbesten Kandidaten (≥ 5%)
+    if not is_valid and ocr_partial and best_overall_score >= 0.55 and best_overall_margin >= 0.05:
+        clean_partial = ocr_partial.replace("?", "").strip().upper()
+        if len(clean_partial) >= 2 and best_candidate.startswith(clean_partial):
+            logger.info(
+                f"Rekonstruktion: Akzeptiert über Stufe 5 (Partial-Match '{ocr_partial}' -> '{best_candidate}', "
+                f"Score={best_overall_score:.1%}, Margin={best_overall_margin:.1%})."
+            )
+            is_valid = True
+
     if is_valid:
         logger.info(f"[OK] REKONSTRUIERT: '{best_candidate}' (Score={best_overall_score:.1%}, Abstand={best_overall_margin:.1%})")
         return {
@@ -1425,7 +1450,7 @@ def _read_datamatrix(frame: np.ndarray) -> str | None:
             logger.info(f"DataMatrix gefunden (zxing-cpp Fast-Path): {zxing_result}")
             return zxing_result
 
-        # zxing-cpp mit Kontrastverstärkung versuchen
+        # zxing-cpp mit Kontrastverstärkung & Top-Hat Entspiegelung versuchen
         for clip_limit in [4.0, 10.0]:
             clahe_zx = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
             enhanced_zx = clahe_zx.apply(gray)
@@ -1433,6 +1458,12 @@ def _read_datamatrix(frame: np.ndarray) -> str | None:
             if zxing_result is not None:
                 logger.info(f"DataMatrix gefunden (zxing-cpp + CLAHE {clip_limit}): {zxing_result}")
                 return zxing_result
+
+        tophat_img = _preprocess_tophat(gray)
+        zxing_result = _try_zxing_dmtx(tophat_img)
+        if zxing_result is not None:
+            logger.info(f"DataMatrix gefunden (zxing-cpp + TopHat): {zxing_result}")
+            return zxing_result
 
     # ===== STUFE 1+: pylibdmtx Fallback (nur wenn zxing-cpp fehlschlägt) =====
     if not _load_dmtx():
@@ -1855,6 +1886,56 @@ def _read_ocr_with_status(frame: np.ndarray) -> dict:
                     return best_partial_result
         if best_ok_result is not None:
             return best_ok_result
+        
+        # Retry mit restlichen Varianten wenn Fast-Mode nur Partial lieferte
+        if best_partial_result is not None and best_ok_result is None:
+            logger.info("OCR Fast-Mode ergab nur Partial → Retry mit erweiterten Varianten...")
+            extra_variants = _preprocess_ocr_variants(ocr_zone.copy(), fast_mode=False)
+            # Nur die zusätzlichen Varianten (ab Index 2) verarbeiten
+            for variant_name, preprocessed_img in extra_variants[2:]:
+                results = reader.readtext(
+                    preprocessed_img,
+                    detail=1,
+                    paragraph=False,
+                    beamWidth=1,
+                    allowlist=ALLOWED_CHARS,
+                )
+                if not results:
+                    continue
+                
+                text, confidence = _extract_4char_candidate(results)
+                if text is not None and confidence >= 0.40:
+                    if _is_valid_horden_code(text):
+                        logger.info(
+                            f"OCR OK [{variant_name}] (Retry, Format-validiert): '{text}' "
+                            f"(Konfidenz: {confidence:.2f})"
+                        )
+                        return {
+                            "status": "ok",
+                            "text": text,
+                            "partial_display": text,
+                            "readable_chars": text,
+                            "confidence": confidence,
+                            "readable_count": 4,
+                            "missing_positions": [],
+                            "raw_candidate": text,
+                        }
+                    elif confidence >= 0.75:
+                        logger.info(
+                            f"OCR OK [{variant_name}] (Retry): '{text}' "
+                            f"(Konfidenz: {confidence:.2f})"
+                        )
+                        return {
+                            "status": "ok",
+                            "text": text,
+                            "partial_display": text,
+                            "readable_chars": text,
+                            "confidence": confidence,
+                            "readable_count": 4,
+                            "missing_positions": [],
+                            "raw_candidate": text,
+                        }
+        
         if best_partial_result is not None:
             return best_partial_result
         
