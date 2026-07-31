@@ -43,7 +43,12 @@ Dokumentation_Projekt_und_KI.md
 evaluation_report.json
 ground_truth_template.json
 
+# Ignore zip archives and benchmark reports
+*.zip
+benchmark_ab_report.json
+
 # OS files
 .DS_Store
 Thumbs.db
+
 

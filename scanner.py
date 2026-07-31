@@ -25,6 +25,9 @@ _ocr_reader = None
 _dmtx_available = False
 _dmtx_loaded = False
 
+# --- Schalter für zxing-cpp Fast-Path Integration ---
+USE_ZXING_FASTPATH = True
+
 # --- Historie der letzten erfolgreichen Scans für Gitter-Rekonstruktion ---
 _recent_scans = []
 
@@ -79,10 +82,7 @@ def _load_zxing():
 def _try_zxing_dmtx(image: np.ndarray) -> str | None:
     """
     Versucht einen DataMatrix-Code per zxing-cpp zu dekodieren (< 5ms).
-    
-    zxing-cpp bietet automatische 3D-Homographie (Perspektiventzerrung),
-    Multi-Scale-Pyramiden und einen HybridBinarizer für schwierige
-    Lichtverhältnisse.
+    Nutzt try_rotate, try_invert und verschiedene Binarisierer.
     
     Args:
         image (np.ndarray): Das Graustufen- oder Farbbild.
@@ -96,26 +96,32 @@ def _try_zxing_dmtx(image: np.ndarray) -> str | None:
     try:
         import zxingcpp
         
-        # Sicherstellen, dass das Bild in Graustufen vorliegt
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image
+            
+        binarizers = [
+            zxingcpp.Binarizer.LocalAverage,
+            zxingcpp.Binarizer.GlobalHistogram,
+            zxingcpp.Binarizer.FixedThreshold,
+        ]
         
-        results = zxingcpp.read_barcodes(
-            gray,
-            formats=zxingcpp.BarcodeFormat.DataMatrix,
-        )
-        
-        if results:
-            for r in results:
-                text = r.text.strip()
+        for binarizer in binarizers:
+            res = zxingcpp.read_barcode(
+                gray,
+                formats=zxingcpp.BarcodeFormat.DataMatrix,
+                try_rotate=True,
+                try_downscale=True,
+                try_invert=True,
+                binarizer=binarizer,
+            )
+            if res and res.valid and res.text:
+                text = res.text.strip()
                 candidate = _clean_to_4chars(text)
                 if candidate is not None:
-                    logger.info(f"zxing-cpp DataMatrix erkannt: '{candidate}' (Originaltext: '{text}')")
+                    logger.info(f"zxing-cpp DataMatrix erkannt (Binarisierer {binarizer}): '{candidate}'")
                     return candidate
-            # Auch ungefilterte Ergebnisse loggen
-            logger.debug(f"zxing-cpp fand {len(results)} DataMatrix-Code(s), aber kein gültiges Horden-Format.")
     except Exception as e:
         logger.debug(f"zxing-cpp Fehler: {e}")
     
@@ -1024,6 +1030,35 @@ def _generate_reference_grid(text: str) -> np.ndarray | None:
     return full
 
 
+# --- Mathematische 4.000-Code Vektor-Datenbank (0.5ms Lookup) ---
+_ALL_CODES_LIST = None
+_ALL_CODES_MATRIX = None
+
+
+def _get_precomputed_4000_grid_matrix():
+    """
+    Vorberechnung aller 4.000 gültigen 10x10 DataMatrix-Binärmatrizen (A000-W999).
+    Ermöglicht mathematischen 0.5ms Vektor-Lookup gegen alle Horden-Codes.
+    
+    Returns:
+        tuple[list[str], np.ndarray]: Liste aller 4.000 Codes und NumPy Matrix (4000, 100).
+    """
+    global _ALL_CODES_LIST, _ALL_CODES_MATRIX
+    if _ALL_CODES_MATRIX is None:
+        codes = [f"{prefix}{num:03d}" for prefix in "ABPW" for num in range(1000)]
+        matrix_rows = []
+        for code in codes:
+            grid = _generate_reference_grid(code)
+            if grid is not None:
+                matrix_rows.append(grid.flatten())
+            else:
+                matrix_rows.append(np.ones(100, dtype=np.uint8))
+        _ALL_CODES_LIST = codes
+        _ALL_CODES_MATRIX = np.array(matrix_rows, dtype=np.uint8)
+        logger.info(f"4.000-Code DataMatrix Vektor-Datenbank erfolgreich vorberechnet ({_ALL_CODES_MATRIX.shape}).")
+    return _ALL_CODES_LIST, _ALL_CODES_MATRIX
+
+
 def _extract_observed_grid(frame: np.ndarray, binarization_method: str = "otsu", strict_l_finder: bool = True) -> np.ndarray | None:
     """
     Sucht nach dem Etikett im Bild und extrahiert das beobachtete 10x10 Grid.
@@ -1243,38 +1278,41 @@ def _try_reconstruct(frame: np.ndarray, ocr_text: str | None,
     best_overall_score = -1.0
     best_overall_margin = -1.0
     best_method = None
-    tested = 0
+    all_codes, all_matrix = _get_precomputed_4000_grid_matrix()
 
-    # Besten Übereinstimmungs-Score ermitteln
+    # Vektorisierter Übereinstimmungs-Vergleich über alle 4.000 Horden-Codes in < 1ms
     for method, observed in observed_variants.items():
-        best_cand_method = None
-        best_score_method = -1.0
-        second_score_method = -1.0
-        
-        for candidate in candidates:
-            ref = _get_cached_reference_grid(candidate)
-            if ref is None:
+        obs_flat = observed.flatten()
+        # Matrix-Vergleich: Summe gleicher Bits für alle 4.000 Vorlagen in einem C/NumPy-Schritt
+        matching_bits = np.sum(all_matrix == obs_flat, axis=1)
+
+        if len(candidates) < 4000:
+            # Falls gezielte Kandidaten vorhanden sind: Unterauswahl filtern
+            indices = [all_codes.index(c) for c in candidates if c in all_codes]
+            if not indices:
                 continue
-            if method == "otsu" and tested == 0:
-                tested += 1
-            score = float(np.sum(observed == ref)) / 100.0
+            cand_indices = np.array(indices)
+            sub_matches = matching_bits[cand_indices]
+            sorted_indices = np.argsort(sub_matches)[::-1]
             
-            # Historien-Boost basierend auf Frequenz und Aktualität
-            if _recent_scans:
-                freq = _recent_scans.count(candidate)
-                if freq > 0:
-                    score += freq * 0.04
-                if candidate == _recent_scans[-1]:
-                    score += 0.04
+            best_idx = cand_indices[sorted_indices[0]]
+            best_cand_method = all_codes[best_idx]
+            best_score_method = sub_matches[sorted_indices[0]] / 100.0
             
-            if score > best_score_method:
-                second_score_method = best_score_method
-                best_score_method = score
-                best_cand_method = candidate
-            elif score > second_score_method:
-                second_score_method = score
-                
-        margin_method = best_score_method - second_score_method
+            second_score = (sub_matches[sorted_indices[1]] / 100.0) if len(sorted_indices) > 1 else 0.0
+            margin_method = best_score_method - second_score
+        else:
+            # Alle 4.000 Vorlagen vergleichen
+            top2_indices = np.argpartition(matching_bits, -2)[-2:]
+            top2_indices = top2_indices[np.argsort(matching_bits[top2_indices])[::-1]]
+            
+            best_idx = top2_indices[0]
+            second_idx = top2_indices[1]
+            
+            best_cand_method = all_codes[best_idx]
+            best_score_method = matching_bits[best_idx] / 100.0
+            margin_method = (matching_bits[best_idx] - matching_bits[second_idx]) / 100.0
+
         logger.debug(f"Rekonstruktion ({method}): Bester='{best_cand_method}' Score={best_score_method:.1%}, Abstand={margin_method:.1%}")
         
         if best_score_method > best_overall_score:
@@ -1381,19 +1419,20 @@ def _read_datamatrix(frame: np.ndarray) -> str | None:
     h, w = gray.shape[:2]
 
     # ===== STUFE 0: zxing-cpp Fast-Path (< 5ms, 3D-Homographie) =====
-    zxing_result = _try_zxing_dmtx(gray)
-    if zxing_result is not None:
-        logger.info(f"DataMatrix gefunden (zxing-cpp Fast-Path): {zxing_result}")
-        return zxing_result
-
-    # zxing-cpp mit Kontrastverstärkung versuchen
-    for clip_limit in [4.0, 10.0]:
-        clahe_zx = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
-        enhanced_zx = clahe_zx.apply(gray)
-        zxing_result = _try_zxing_dmtx(enhanced_zx)
+    if USE_ZXING_FASTPATH:
+        zxing_result = _try_zxing_dmtx(gray)
         if zxing_result is not None:
-            logger.info(f"DataMatrix gefunden (zxing-cpp + CLAHE {clip_limit}): {zxing_result}")
+            logger.info(f"DataMatrix gefunden (zxing-cpp Fast-Path): {zxing_result}")
             return zxing_result
+
+        # zxing-cpp mit Kontrastverstärkung versuchen
+        for clip_limit in [4.0, 10.0]:
+            clahe_zx = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
+            enhanced_zx = clahe_zx.apply(gray)
+            zxing_result = _try_zxing_dmtx(enhanced_zx)
+            if zxing_result is not None:
+                logger.info(f"DataMatrix gefunden (zxing-cpp + CLAHE {clip_limit}): {zxing_result}")
+                return zxing_result
 
     # ===== STUFE 1+: pylibdmtx Fallback (nur wenn zxing-cpp fehlschlägt) =====
     if not _load_dmtx():
@@ -1717,10 +1756,10 @@ def _read_ocr_with_status(frame: np.ndarray) -> dict:
                 # Format-Validierung gibt zusätzliche Sicherheit
                 if confidence >= 0.40 and _is_valid_horden_code(text):
                     logger.info(
-                        f"OCR OK [{variant_name}] (Format-validiert): '{text}' "
-                        f"(Konfidenz: {confidence:.2f}, gültiges Horden-Format)"
+                        f"OCR OK [{variant_name}] (Format-validiert, Early-Exit): '{text}' "
+                        f"(Konfidenz: {confidence:.2f})"
                     )
-                    candidate_result = {
+                    return {
                         "status": "ok",
                         "text": text,
                         "partial_display": text,
@@ -1730,10 +1769,6 @@ def _read_ocr_with_status(frame: np.ndarray) -> dict:
                         "missing_positions": [],
                         "raw_candidate": text,
                     }
-                    # Merken, aber weiter versuchen ob eine andere Variante bessere Konfidenz liefert
-                    if best_ok_result is None or confidence > best_ok_result["confidence"]:
-                        best_ok_result = candidate_result
-                    continue
                 
                 # Niedrige Konfidenz (≥ 0.20): Einzelzeichen prüfen
                 if confidence >= 0.20:
