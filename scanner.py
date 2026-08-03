@@ -1458,7 +1458,7 @@ def _try_reconstruct(frame: np.ndarray, ocr_text: str | None,
             is_valid = True
 
     # Stufe 5: OCR-Partial (3-stelliger Teilcode wie W03?) & Ziel-Matching des 10x10 Gitters
-    if not is_valid and ocr_partial and best_overall_score >= 0.58 and best_overall_margin >= 0.02:
+    if not is_valid and ocr_partial and best_overall_score >= 0.65 and best_overall_margin >= 0.05:
         clean_partial = ocr_partial.replace("?", "").strip().upper()
         if len(clean_partial) >= 2 and best_candidate.startswith(clean_partial):
             logger.info(
