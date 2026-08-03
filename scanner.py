@@ -1947,9 +1947,12 @@ def _read_ocr_with_status(frame: np.ndarray) -> dict:
                     
                     # Pixel-basierte Lückenanalyse: sucht visuell nach der fehlenden Position
                     missing_pos = _estimate_missing_position_spatial(preprocessed_img, results)
-                    # Sicherheitscheck: Wenn Präfix erkannt, darf Position 0 nicht fehlen
+                    # Sicherheitscheck 1: Wenn Präfix erkannt, darf Position 0 nicht fehlen
                     if prefix_detected and 0 in missing_pos:
                         missing_pos = [1]
+                    # Sicherheitscheck 2: Wenn KEIN Präfix erkannt (3 Ziffern), MUSS Position 0 (Buchstabe) fehlen!
+                    elif not prefix_detected:
+                        missing_pos = [0]
                     
                     partial_display = _format_partial_display(partial_norm, missing_pos)
                     logger.info(
@@ -2084,6 +2087,15 @@ def _build_partial_with_confidence(
             display_chars.append('?')
             missing_positions.append(i)
 
+    # Horden-Code Plausibilität: Wenn 3 Zeichen gelesen wurden, aber kein Präfix-Buchstabe vorhanden ist,
+    # liegt die Lücke garantiert an Position 0 (Buchstabe fehlt), nicht am Ende!
+    if len(high_conf_chars) == 3:
+        first_ch = high_conf_chars[0]
+        has_prefix = (first_ch in VALID_PREFIXES or first_ch in _FUZZY_PREFIX_MAP or first_ch in _DIGIT_TO_LETTER)
+        if not has_prefix:
+            display_chars = ['?'] + [c for c in high_conf_chars[:3]]
+            missing_positions = [0]
+
     partial_display = ''.join(display_chars)
     return high_conf_chars, partial_display, missing_positions
 
@@ -2160,16 +2172,20 @@ def _estimate_missing_position_spatial(preprocessed_img: np.ndarray, ocr_results
 def _format_partial_display(readable_chars: str, missing_positions: list[int]) -> str:
     """
     Formatiert die Anzeige der Teillesung mit '?' an den fehlenden Stellen.
-    
-    Args:
-        readable_chars (str): Lesbare Zeichen.
-        missing_positions (list[int]): Fehlende Indizes.
-        
-    Returns:
-        str: Der formatierte 4-stellige String.
+    Stellt sicher, dass bei 3 Ziffern ohne Buchstabe das '?' an Pos 0 steht.
     """
+    if not readable_chars:
+        return "????"
+
+    clean_chars = ''.join(c for c in readable_chars if c in ALLOWED_CHARS)
+
+    # Spezialfall: 3 Ziffern ohne Präfix-Buchstabe (z.B. "032" oder "103")
+    # Der Buchstabe an Pos 0 fehlt zwingend -> Format ist "?032" bzw. "?103"
+    if len(clean_chars) == 3 and not (clean_chars[0] in VALID_PREFIXES or clean_chars[0] in _FUZZY_PREFIX_MAP or clean_chars[0] in _DIGIT_TO_LETTER):
+        return "?" + clean_chars
+
     if not missing_positions:
-        return readable_chars[:4] if len(readable_chars) >= 4 else readable_chars
+        return clean_chars[:4] if len(clean_chars) >= 4 else clean_chars
 
     result = list("????")
     char_idx = 0
@@ -2177,11 +2193,15 @@ def _format_partial_display(readable_chars: str, missing_positions: list[int]) -
         if pos in missing_positions:
             result[pos] = '?'
         else:
-            if char_idx < len(readable_chars):
-                result[pos] = readable_chars[char_idx]
+            if char_idx < len(clean_chars):
+                result[pos] = clean_chars[char_idx]
                 char_idx += 1
 
-    return ''.join(result)
+    res_str = ''.join(result)
+    if res_str[0] in '0123456789' and len(clean_chars) == 3:
+        return "?" + clean_chars
+
+    return res_str
 
 
 def _check_dmx_visibility(frame: np.ndarray) -> dict:
