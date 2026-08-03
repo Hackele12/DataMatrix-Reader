@@ -249,6 +249,15 @@ def _preprocess_ocr_variants(image: np.ndarray, fast_mode: bool = True) -> list[
         # Variante 6: Binär-Otsu – maximaler Schwarz/Weiß-Kontrast
         _, binary = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         variants.append(("binaer_otsu", binary))
+        
+        # Variante 7: Adaptiv + MorphClose (2x2) – repariert gebrochene/verblasste Buchstabenstriche
+        adaptive_ocr = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, 15, 3
+        )
+        kernel_2x2 = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        morph_close_ocr = cv2.morphologyEx(adaptive_ocr, cv2.MORPH_CLOSE, kernel_2x2)
+        variants.append(("morph_close_ocr", morph_close_ocr))
     
     return variants
 
@@ -705,16 +714,20 @@ def _warp_and_sample(gray: np.ndarray, corners: np.ndarray, binarization_method:
     else:
         _, warped_bin = cv2.threshold(warped, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
+    # Morphologisches Schließen (3x3 Kernel) zur Entfernung kleiner Ätzbecken-Löcher in schwarzen Modulen
+    kernel_3x3 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    warped_bin_clean = cv2.morphologyEx(warped_bin, cv2.MORPH_CLOSE, kernel_3x3)
+
     cells = np.zeros((grid, grid), dtype=np.uint8)
     for row in range(grid):
         for col in range(grid):
             cy = row * cell + cell // 2
             cx = col * cell + cell // 2
             half = max(2, cell // 3)
-            region = warped_bin[cy - half:cy + half, cx - half:cx + half]
+            region = warped_bin_clean[cy - half:cy + half, cx - half:cx + half]
             if region.size == 0:
                 continue
-            cells[row, col] = 1 if np.mean(region) > 127 else 0
+            cells[row, col] = 1 if np.median(region) > 127 else 0
 
     # L-Finder Plausibilitätscheck
     if strict_l_finder:
@@ -1165,13 +1178,18 @@ def _extract_observed_grid(frame: np.ndarray, binarization_method: str = "otsu",
         clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
         label_enhanced = clahe.apply(label_crop)
         
-        _, crop_bin = cv2.threshold(label_enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        crop_inv = cv2.bitwise_not(crop_bin)
+        _, crop_bin_otsu = cv2.threshold(label_enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        crop_bin_adapt = cv2.adaptiveThreshold(
+            label_enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, 21, 4
+        )
 
-        for k_size in [45, 35, 25, 15, 9]:
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k_size, k_size))
-            closed = cv2.morphologyEx(crop_inv, cv2.MORPH_CLOSE, kernel, iterations=2)
-            cnts, _ = cv2.findContours(closed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        for b_img in [crop_bin_otsu, crop_bin_adapt]:
+            crop_inv = cv2.bitwise_not(b_img)
+            for k_size in [45, 35, 25, 15, 9]:
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k_size, k_size))
+                closed = cv2.morphologyEx(crop_inv, cv2.MORPH_CLOSE, kernel, iterations=2)
+                cnts, _ = cv2.findContours(closed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
             for c in cnts:
                 area = cv2.contourArea(c)
                 if area < 400 or area > (crop_h * crop_w) * 0.70:
