@@ -215,9 +215,9 @@ class LogAnalyzerApp(ctk.CTk):
         for key in ["Scan-ID", "Zeitstempel", "Endergebnis", "Methode", "Konfidenz", "DMTX", "OCR", "YOLO Conf", "Dauer", "Kamera", "Belichtung/Gain", "Flags"]:
             frame = ctk.CTkFrame(self.details_frame, fg_color="transparent")
             frame.pack(fill="x", pady=2)
-            lbl_key = ctk.CTkLabel(frame, text=f"{key}:", font=ctk.CTkFont(size=11, weight="bold"), text_color=TXT_MID, anchor="w", width=110)
-            lbl_key.pack(side="left")
-            lbl_val = ctk.CTkLabel(frame, text="—", font=ctk.CTkFont(size=11), text_color=TXT_DARK, anchor="w")
+            lbl_key = ctk.CTkLabel(frame, text=f"{key}:", font=ctk.CTkFont(size=11, weight="bold"), text_color=TXT_MID, anchor="nw", width=100)
+            lbl_key.pack(side="left", anchor="nw")
+            lbl_val = ctk.CTkLabel(frame, text="—", font=ctk.CTkFont(size=11), text_color=TXT_DARK, anchor="w", justify="left", wraplength=220)
             lbl_val.pack(side="left", fill="x", expand=True)
             self.detail_labels[key] = lbl_val
 
@@ -1315,7 +1315,7 @@ class LogAnalyzerApp(ctk.CTk):
         self.detail_labels["OCR"].configure(text=ocr.get("text") or (ocr.get("partial") or "Nicht lesbar"))
         self.detail_labels["YOLO Conf"].configure(text=f"{det.get('yolo_conf', 0.0) * 100:.1f}%")
         self.detail_labels["Dauer"].configure(
-            text=f"Gesamt: {timing.get('total_ms', 0)}ms  (YOLO: {timing.get('yolo_ms', 0)}ms, OCR: {timing.get('ocr_ms', 0)}ms, DMTX: {timing.get('dmtx_ms', 0)}ms)"
+            text=f"{timing.get('total_ms', 0)} ms\n(YOLO: {timing.get('yolo_ms', 0)}ms, OCR: {timing.get('ocr_ms', 0)}ms, DMX: {timing.get('dmtx_ms', 0)}ms)"
         )
         self.detail_labels["Kamera"].configure(text=meta.get("camera_model") or "—")
         exp_us = meta.get("exposure_us")

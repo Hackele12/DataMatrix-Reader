@@ -429,12 +429,12 @@ class ScanLogger:
         flags = _compute_flags(scan_result, detection_info, timing)
         grade = _compute_grade(scan_result, flags)
 
-        # Bild speichern Logik: Immer speichern (Erfolg & Fehler) für vollständige Bildhistorie
+        # Bild speichern Logik: Nur bei Fehler (success == False) ein Bild auf Festplatte speichern
         image_path = None
         resolution = None
         success = scan_result.get("success", False)
         is_slow = "SLOW_SCAN" in flags
-        should_save_image = True  # Bilder für alle Scans (Cam1 & Cam2) speichern
+        should_save_image = (not success)  # Nur speichern wenn die Horde gar nicht gelesen werden konnte (Error)
 
         if frame is not None and should_save_image:
             h, w = frame.shape[:2]
