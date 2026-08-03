@@ -2771,6 +2771,7 @@ def deskew_crop(image: np.ndarray, box: tuple[int, int, int, int], padding: int 
     falls es rotiert/schräg ist.
     
     Kombiniert YOLO-Größenangaben mit klassischer Kanten-Winkelbestimmung.
+    Garantiert IMMER ein gleichmäßiges Padding (Quiet Zone) für DataMatrix/OCR.
     
     Args:
         image: Das Originalbild (BGR).
@@ -2787,6 +2788,14 @@ def deskew_crop(image: np.ndarray, box: tuple[int, int, int, int], padding: int 
     w_box = x2 - x1
     h_box = y2 - y1
     
+    # Standard-Padded Crop für Fälle ohne Rotation (garantiert Quiet Zone)
+    pad_safe = 25
+    x1_padded = max(0, x1 - pad_safe)
+    y1_padded = max(0, y1 - pad_safe)
+    x2_padded = min(w_img, x2 + pad_safe)
+    y2_padded = min(h_img, y2 + pad_safe)
+    padded_crop_direct = image[y1_padded:y2_padded, x1_padded:x2_padded]
+    
     # 1. Großzügiges Padding hinzufügen
     px1 = max(0, x1 - padding)
     py1 = max(0, y1 - padding)
@@ -2795,7 +2804,7 @@ def deskew_crop(image: np.ndarray, box: tuple[int, int, int, int], padding: int 
     
     crop = image[py1:py2, px1:px2]
     if crop.size == 0:
-        return image[y1:y2, x1:x2] # Fallback auf Standard-Ausschnitt
+        return padded_crop_direct
         
     # 2. Graustufen & Binarisierung
     if len(crop.shape) == 3:
@@ -2816,7 +2825,7 @@ def deskew_crop(image: np.ndarray, box: tuple[int, int, int, int], padding: int 
     # 3. Alle Konturen durchsuchen, um den dominanten Winkel zu bestimmen
     contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
-        return image[y1:y2, x1:x2]
+        return padded_crop_direct
         
     # Wir filtern Konturen nach einer gewissen Mindestgröße, um Rauschen zu vermeiden
     valid_rects = []
@@ -2827,7 +2836,7 @@ def deskew_crop(image: np.ndarray, box: tuple[int, int, int, int], padding: int 
             valid_rects.append((area, rect))
             
     if not valid_rects:
-        return image[y1:y2, x1:x2]
+        return padded_crop_direct
         
     # Nimm das Rechteck mit der größten Fläche (dominanteste Kantenstruktur)
     _, best_rect = max(valid_rects, key=lambda x: x[0])
@@ -2844,15 +2853,13 @@ def deskew_crop(image: np.ndarray, box: tuple[int, int, int, int], padding: int 
     elif angle < -45.0:
         angle += 90.0
         
-    # Wenn der Winkel extrem klein ist, reicht ein normaler Ausschnitt
+    # Wenn der Winkel extrem klein ist, reicht ein normaler Ausschnitt mit Quiet Zone
     if abs(angle) < 1.0:
-        return image[y1:y2, x1:x2]
+        return padded_crop_direct
         
     # 5. Rotieren des Ausschnitts um den Mittelpunkt der YOLO-Box (relativ zum Ausschnitt)
-    # Mittelpunkt der YOLO-Box im originalen Bild:
     cx_orig = (x1 + x2) / 2.0
     cy_orig = (y1 + y2) / 2.0
-    # Mittelpunkt relativ zum crop:
     cx_crop = cx_orig - px1
     cy_crop = cy_orig - py1
     
@@ -2869,8 +2876,7 @@ def deskew_crop(image: np.ndarray, box: tuple[int, int, int, int], padding: int 
     rx2 = int(cx_crop + (w_box / 2.0))
     ry2 = int(cy_crop + (h_box / 2.0))
     
-    # Sicherheitsrand hinzufügen, da durch Begradigung Ecken leicht kippen
-    pad_safe = 15
+    # Sicherheitsrand (Quiet Zone) hinzufügen
     rx1 = max(0, rx1 - pad_safe)
     ry1 = max(0, ry1 - pad_safe)
     rx2 = min(rotated.shape[1], rx2 + pad_safe)
@@ -2878,6 +2884,6 @@ def deskew_crop(image: np.ndarray, box: tuple[int, int, int, int], padding: int 
     
     final_crop = rotated[ry1:ry2, rx1:rx2]
     if final_crop.size == 0:
-        return image[y1:y2, x1:x2]
+        return padded_crop_direct
         
     return final_crop
