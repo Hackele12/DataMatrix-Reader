@@ -450,11 +450,12 @@ class LogAnalyzerApp(ctk.CTk):
             # 1. Existierende Tages-Logs (scans_*.jsonl) automatisch in scans.jsonl konsolidieren
             try:
                 import scan_logger
-                for root, dirs, _ in os.walk(self._log_dir):
-                    try:
-                        sl = scan_logger.ScanLogger(log_dir=root)
-                    except Exception:
-                        pass
+                if hasattr(scan_logger, "consolidate_logs_in_dir"):
+                    scan_logger.consolidate_logs_in_dir(self._log_dir)
+                    for item in os.listdir(self._log_dir):
+                        item_path = os.path.join(self._log_dir, item)
+                        if os.path.isdir(item_path) and item.lower() != "images":
+                            scan_logger.consolidate_logs_in_dir(item_path)
             except Exception:
                 pass
 

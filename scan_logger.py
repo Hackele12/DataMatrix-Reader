@@ -82,6 +82,91 @@ def resolve_log_directory(preferred_path: str = r"U:\Temp\DataMatrixReader.logFi
     return local_dir
 
 
+def cleanup_nested_image_folders(base_dir: str):
+    """Sucht und entfernt versehentlich rekursiv erstellte 'images/images' Ordner."""
+    if not base_dir or not os.path.exists(base_dir):
+        return
+    try:
+        for root, dirs, _ in os.walk(base_dir, topdown=False):
+            for d in dirs:
+                if d.lower() == "images" and os.path.basename(root).lower() == "images":
+                    full_d = os.path.join(root, d)
+                    try:
+                        shutil.rmtree(full_d, ignore_errors=True)
+                        logger.info(f"ScanLogger: Verschachtelten Ordner entfernt: {full_d}")
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+
+def consolidate_logs_in_dir(log_dir: str):
+    """
+    Führt alte Tages-Logdateien (scans_*.jsonl) in die primäre Gesamtdatei scans.jsonl zusammen,
+    OHNE ein ScanLogger-Objekt zu erzeugen oder neue Ordner anzulegen.
+    """
+    if not log_dir or not os.path.exists(log_dir) or not os.path.isdir(log_dir):
+        return
+    try:
+        cleanup_nested_image_folders(log_dir)
+        target_single_log = os.path.join(log_dir, "scans.jsonl")
+        daily_files = sorted(
+            [f for f in os.listdir(log_dir) if f.startswith("scans_") and f.endswith(".jsonl")]
+        )
+        if not daily_files:
+            return
+
+        records_by_id = {}
+        ordered_records = []
+
+        if os.path.exists(target_single_log):
+            with open(target_single_log, "r", encoding="utf-8") as f:
+                for line in f:
+                    line_str = line.strip()
+                    if not line_str:
+                        continue
+                    try:
+                        rec = json.loads(line_str)
+                        sid = rec.get("scan_id") or rec.get("ts")
+                        if sid and sid not in records_by_id:
+                            records_by_id[sid] = line_str
+                            ordered_records.append(line_str)
+                    except Exception:
+                        pass
+
+        for df in daily_files:
+            df_path = os.path.join(log_dir, df)
+            try:
+                with open(df_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line_str = line.strip()
+                        if not line_str:
+                            continue
+                        try:
+                            rec = json.loads(line_str)
+                            sid = rec.get("scan_id") or rec.get("ts")
+                            if sid and sid not in records_by_id:
+                                records_by_id[sid] = line_str
+                                ordered_records.append(line_str)
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.warning(f"ScanLogger: Fehler beim Lesen von {df}: {e}")
+
+        with open(target_single_log, "w", encoding="utf-8") as f:
+            for l_str in ordered_records:
+                f.write(l_str + "\n")
+
+        for df in daily_files:
+            df_path = os.path.join(log_dir, df)
+            try:
+                os.remove(df_path)
+            except Exception:
+                pass
+    except Exception as e:
+        logger.error(f"ScanLogger: Log-Konsolidierungsfehler in '{log_dir}': {e}")
+
+
 def _now_iso() -> str:
     """Gibt den aktuellen Zeitstempel im ISO-8601-Format mit Zeitzonen-Offset zurück."""
     return datetime.now().astimezone().isoformat(timespec="milliseconds")
@@ -258,70 +343,7 @@ class ScanLogger:
         Führt alte Tages-Logdateien (scans_*.jsonl) automatisch in die primäre
         Gesamtdatei `scans.jsonl` zusammen und entfernt alte Tages-Dateien.
         """
-        try:
-            target_single_log = os.path.join(self._log_dir, "scans.jsonl")
-            daily_files = sorted(
-                [f for f in os.listdir(self._log_dir) if f.startswith("scans_") and f.endswith(".jsonl")]
-            )
-
-            if not daily_files:
-                return
-
-            records_by_id = {}
-            ordered_records = []
-
-            # 1. Vorhandene Records aus scans.jsonl einlesen
-            if os.path.exists(target_single_log):
-                with open(target_single_log, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line_str = line.strip()
-                        if not line_str:
-                            continue
-                        try:
-                            rec = json.loads(line_str)
-                            sid = rec.get("scan_id") or rec.get("ts")
-                            if sid and sid not in records_by_id:
-                                records_by_id[sid] = line_str
-                                ordered_records.append(line_str)
-                        except Exception:
-                            pass
-
-            # 2. Records aus alten Tages-Dateien einlesen & anhängen (falls noch nicht vorhanden)
-            for df in daily_files:
-                df_path = os.path.join(self._log_dir, df)
-                try:
-                    with open(df_path, "r", encoding="utf-8") as f:
-                        for line in f:
-                            line_str = line.strip()
-                            if not line_str:
-                                continue
-                            try:
-                                rec = json.loads(line_str)
-                                sid = rec.get("scan_id") or rec.get("ts")
-                                if sid and sid not in records_by_id:
-                                    records_by_id[sid] = line_str
-                                    ordered_records.append(line_str)
-                            except Exception:
-                                pass
-                except Exception as e:
-                    logger.warning(f"ScanLogger: Fehler beim Lesen von {df}: {e}")
-
-            # 3. Konsolidierte scans.jsonl schreiben
-            with open(target_single_log, "w", encoding="utf-8") as f:
-                for l_str in ordered_records:
-                    f.write(l_str + "\n")
-
-            # 4. Alte Tages-Logdateien entfernen
-            for df in daily_files:
-                df_path = os.path.join(self._log_dir, df)
-                try:
-                    os.remove(df_path)
-                    logger.info(f"ScanLogger: Tagesdatei in scans.jsonl konsolidiert & entfernt: {df}")
-                except Exception as e:
-                    logger.warning(f"ScanLogger: Fehler beim Löschen von {df}: {e}")
-
-        except Exception as e:
-            logger.error(f"ScanLogger: Log-Konsolidierungsfehler: {e}")
+        consolidate_logs_in_dir(self._log_dir)
 
     def _get_log_filepath(self) -> str:
         """Gibt den Pfad zur primären Gesamt-Logdatei (scans.jsonl) zurück."""
