@@ -28,9 +28,6 @@ _dmtx_loaded = False
 # --- Schalter für zxing-cpp Fast-Path Integration ---
 USE_ZXING_FASTPATH = True
 
-# --- Historie der letzten erfolgreichen Scans für Gitter-Rekonstruktion ---
-_recent_scans = []
-
 # --- Erlaubte Zeichen für Horden-Codes ---
 ALLOWED_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 REQUIRED_LENGTH = 4
@@ -46,6 +43,7 @@ def _load_dmtx():
     global _dmtx_available, _dmtx_loaded
     if not _dmtx_loaded:
         try:
+            import setuptools  # noqa: F401 (distutils Kompatibilität für Python 3.12+)
             from pylibdmtx.pylibdmtx import decode  # noqa: F401
             _dmtx_available = True
             logger.info("pylibdmtx erfolgreich geladen.")
@@ -234,17 +232,21 @@ def _preprocess_ocr_variants(image: np.ndarray, fast_mode: bool = True) -> list[
     clahe_agg = cv2.createCLAHE(clipLimit=8.0, tileGridSize=(8, 8))
     variants.append(("aggressiv", clahe_agg.apply(sharpened)))
     
+    # Variante 3: Faded Contrast Boost – Perzentil-Stretching + Morphologie
+    faded_boost = _preprocess_faded_contrast(gray)
+    variants.append(("faded_boost", faded_boost))
+    
     if not fast_mode:
-        # Variante 3: Extrem (clipLimit=15.0) – für stark ausgebleichte Codes
+        # Variante 4: Extrem (clipLimit=15.0) – für stark ausgebleichte Codes
         clahe_ext = cv2.createCLAHE(clipLimit=15.0, tileGridSize=(8, 8))
         variants.append(("extrem", clahe_ext.apply(sharpened)))
         
-        # Variante 4: Invertiert + aggressives CLAHE – für invertierte Kontraste
+        # Variante 5: Invertiert + aggressives CLAHE – für invertierte Kontraste
         inverted = cv2.bitwise_not(sharpened)
         clahe_inv = cv2.createCLAHE(clipLimit=8.0, tileGridSize=(8, 8))
         variants.append(("invertiert", clahe_inv.apply(inverted)))
         
-        # Variante 5: Binär-Otsu – maximaler Schwarz/Weiß-Kontrast
+        # Variante 6: Binär-Otsu – maximaler Schwarz/Weiß-Kontrast
         _, binary = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         variants.append(("binaer_otsu", binary))
     
@@ -1195,9 +1197,24 @@ def _extract_observed_grid(frame: np.ndarray, binarization_method: str = "otsu",
         corners = np.float32(box)
         oriented = _orient_corners(label_enhanced, corners, strict=strict_l_finder)
         if oriented is not None:
-            cells = _warp_and_sample(label_enhanced, oriented, binarization_method=binarization_method, strict_l_finder=strict_l_finder)
-            if cells is not None:
-                return cells
+            # Eckpunkt-Feinabstimmung für präzises DataMatrix-Grid-Sampling
+            best_cells = None
+            best_l_score = -1
+            center = oriented.mean(axis=0)
+            
+            for scale in [0.96, 1.00, 1.04]:
+                scaled = center + (oriented - center) * scale
+                for dx in [-4, 0, 4]:
+                    for dy in [-4, 0, 4]:
+                        shifted = (scaled + np.array([dx, dy])).astype(np.float32)
+                        cells = _warp_and_sample(label_enhanced, shifted, binarization_method=binarization_method, strict_l_finder=strict_l_finder)
+                        if cells is not None:
+                            l_score = np.sum(cells[:, 0] == 0) + np.sum(cells[9, :] == 0)
+                            if l_score > best_l_score:
+                                best_l_score = l_score
+                                best_cells = cells
+            if best_cells is not None:
+                return best_cells
 
     return None
 
@@ -1795,8 +1812,10 @@ def _read_ocr_with_status(frame: np.ndarray) -> dict:
     try:
         reader = _load_ocr()
         h_frame, w_frame = frame.shape[:2]
-        # Untere 60% des Bildes scannen (Klarschrift liegt typischerweise unten)
-        ocr_zone = frame[int(h_frame * 0.40):, :]
+        # Untere 65% des Bildes scannen (Klarschrift liegt typischerweise unten)
+        ocr_zone = frame[int(h_frame * 0.35):, :]
+        # Ausreichend weißer Rand (Quiet Zone) für EasyOCR CRAFT-Detektion
+        ocr_zone = cv2.copyMakeBorder(ocr_zone, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
         
         # OCR-Zone auf max. 800px Breite herunterskalieren (spart ~75% PyTorch-Rechenzeit)
         ocr_h, ocr_w = ocr_zone.shape[:2]
@@ -2579,8 +2598,7 @@ def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray) -> dic
                     prefix = partial_norm[0]
                     digits_part = partial_norm[1:]
                     
-                    best_inferred = None
-                    best_inferred_score = -1.0
+                    cand_scores = []
                     
                     for d in '0123456789':
                         if pos == 0:
@@ -2593,43 +2611,40 @@ def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray) -> dic
                             continue
                         
                         if _is_valid_horden_code(candidate):
-                            # Versuche Grid-Match wenn möglich
                             observed_grid = dmx_result.get("observed_grid")
                             if observed_grid is not None:
                                 ref = _get_cached_reference_grid(candidate)
                                 if ref is not None:
                                     score = float(np.sum(observed_grid == ref)) / 100.0
-                                    
-                                    # Historien-Boost
-                                    if _recent_scans:
-                                        freq = _recent_scans.count(candidate)
-                                        if freq > 0:
-                                            score += freq * 0.04
-                                        if candidate == _recent_scans[-1]:
-                                            score += 0.04
-                                            
-                                    if score > best_inferred_score:
-                                        best_inferred_score = score
-                                        best_inferred = candidate
-                            elif best_inferred is None:
-                                best_inferred = candidate  # Erster gültiger Kandidat
+                                    cand_scores.append((candidate, score))
                     
-                    if best_inferred is not None and (best_inferred_score >= 0.60 or best_inferred_score < 0):
-                        conf = best_inferred_score if best_inferred_score > 0 else 0.70
-                        logger.info(
-                            f"Partial-Inferenz (fehlende Pos {pos}): "
-                            f"'{ocr_partial_display}' → '{best_inferred}' (Score={conf:.2f})"
-                        )
-                        return {
-                            "success": True,
-                            "result": best_inferred,
-                            "method": "Rekonstruiert",
-                            "confidence": min(1.0, max(0.98, conf)),
-                            "dmtx_result": None,
-                            "ocr_result": ocr_partial_display,
-                            "verified": False,
-                            "ocr_partial_display": ocr_partial_display,
-                        }
+                    if cand_scores:
+                        cand_scores.sort(key=lambda x: x[1], reverse=True)
+                        best_inferred, best_inferred_score = cand_scores[0]
+                        second_score = cand_scores[1][1] if len(cand_scores) > 1 else 0.0
+                        margin = best_inferred_score - second_score
+                        
+                        # Strenge Prüfung: Erfordere Mindest-Score (>=0.60) UND deutlichen Abstand (>=0.04) zum zweitbesten Ziffern-Kandidaten!
+                        if best_inferred_score >= 0.60 and margin >= 0.04:
+                            logger.info(
+                                f"Partial-Inferenz (fehlende Pos {pos}): "
+                                f"'{ocr_partial_display}' → '{best_inferred}' (Score={best_inferred_score:.2f}, Margin={margin:.2f})"
+                            )
+                            return {
+                                "success": True,
+                                "result": best_inferred,
+                                "method": "Rekonstruiert",
+                                "confidence": min(1.0, max(0.98, best_inferred_score)),
+                                "dmtx_result": None,
+                                "ocr_result": ocr_partial_display,
+                                "verified": False,
+                                "ocr_partial_display": ocr_partial_display,
+                            }
+                        else:
+                            logger.warning(
+                                f"Partial-Inferenz verworfen für '{ocr_partial_display}': "
+                                f"Bester='{best_inferred}' Score={best_inferred_score:.2f}, Margin={margin:.2f} zu gering."
+                            )
 
         logger.warning(f"Rekonstruktion mit OCR-Partial '{ocr_partial_display}' fehlgeschlagen.")
         return {
@@ -2746,14 +2761,6 @@ def scan(frame: np.ndarray) -> dict:
         f"Scan Ergebnis: success={result['success']}, "
         f"method={result['method']}, result='{result['result']}'"
     )
-
-    # Historie aktualisieren bei erfolgreichen, hochkonfidenten Scans (z.B. Verifiziert oder OCR >= 0.90)
-    if result["success"] and result["confidence"] >= 0.90 and result["result"]:
-        code = result["result"]
-        global _recent_scans
-        _recent_scans.append(code)
-        if len(_recent_scans) > 10:
-            _recent_scans.pop(0)
 
     return result
 
