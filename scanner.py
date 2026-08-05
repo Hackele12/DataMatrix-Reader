@@ -232,11 +232,27 @@ def _preprocess_ocr_variants(image: np.ndarray, fast_mode: bool = True) -> list[
     clahe_agg = cv2.createCLAHE(clipLimit=8.0, tileGridSize=(8, 8))
     variants.append(("aggressiv", clahe_agg.apply(sharpened)))
     
-    # Variante 3: Faded Contrast Boost – Perzentil-Stretching + Morphologie
-    faded_boost = _preprocess_faded_contrast(gray)
-    variants.append(("faded_boost", faded_boost))
-    
     if not fast_mode:
+        # Variante 3: Faded Contrast Boost – Perzentil-Stretching + Morphologie
+        faded_boost = _preprocess_faded_contrast(gray)
+        variants.append(("faded_boost", faded_boost))
+        
+        # Variante: Etch Denoise – Spezialfilter für verätzte/beschädigte Oberflächen
+        etch_denoise = _preprocess_etch_denoise(gray)
+        variants.append(("etch_denoise", etch_denoise))
+        
+        # Variante: Ridge Boost – Sobel & LoG Kanten-/Strukturverstärkung
+        ridge_boost = _preprocess_ridge_enhancement(gray)
+        variants.append(("ridge_boost", ridge_boost))
+        
+        # Variante: Sauvola W11 – feines lokales Schwellenwert-Fenster
+        sauvola_w11 = _preprocess_sauvola(gray, window_size=11, k=0.2)
+        variants.append(("sauvola_w11", sauvola_w11))
+        
+        # Variante: Niblack – Lokaler Niblack-Schwellenwert
+        niblack_img = _preprocess_niblack(gray, window_size=21, k=-0.2)
+        variants.append(("niblack", niblack_img))
+        
         # Variante 4: Extrem (clipLimit=15.0) – für stark ausgebleichte Codes
         clahe_ext = cv2.createCLAHE(clipLimit=15.0, tileGridSize=(8, 8))
         variants.append(("extrem", clahe_ext.apply(sharpened)))
@@ -305,9 +321,77 @@ def _preprocess_faded_contrast(image: np.ndarray) -> np.ndarray:
     return _sharpen(enhanced)
 
 
+def _preprocess_etch_denoise(image: np.ndarray) -> np.ndarray:
+    """
+    Spezial-Vorverarbeitung zur Entrauschung und Neutralisierung von Ätzspuren,
+    Säureflecken, Glanzstellen und Lochfraß-Beschädigungen auf metallischen/geätzten Horden.
+    
+    Kombiniert Perzentil-Stretching, TopHat/BlackHat-Morphologie, Morphologisches Closing (3x3)
+    und Unsharp-Masking.
+    """
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    # 1. Perzentil-Histogramm-Stretching (1%-99%)
+    p_low, p_high = np.percentile(gray, (1, 99))
+    if p_high > p_low:
+        stretched = np.clip((gray.astype(np.float32) - p_low) * (255.0 / (p_high - p_low)), 0, 255).astype(np.uint8)
+    else:
+        stretched = gray
+
+    # 2. Kombinierte Morphologie: TopHat + BlackHat Boost für verätzte Oberflächen
+    kernel_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    tophat = cv2.morphologyEx(stretched, cv2.MORPH_TOPHAT, kernel_large)
+    blackhat = cv2.morphologyEx(stretched, cv2.MORPH_BLACKHAT, kernel_large)
+
+    enhanced = cv2.addWeighted(stretched, 1.0, tophat, 1.2, 0)
+    enhanced = cv2.subtract(enhanced, (blackhat * 1.2).astype(np.uint8))
+
+    # 3. Morphologisches Closing (3x3 Kernel) zur Schließung von Modullöchern/Ätzspuren
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    closed = cv2.morphologyEx(enhanced, cv2.MORPH_CLOSE, kernel_close)
+
+    # 4. Unsharp-Masking
+    return _sharpen(closed)
+
+
+def _preprocess_ridge_enhancement(image: np.ndarray) -> np.ndarray:
+    """
+    Schnelle Kanten- und Ridge-Strukturverstärkung für stark verblasste Ätzpunkte
+    und schwache OCR-Buchstabenstriche (optimierte 8-Bit Sobel-Variante).
+    """
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    # 1. Perzentil-Stretching (2%-98%)
+    p_low, p_high = np.percentile(gray, (2, 98))
+    if p_high > p_low:
+        stretched = np.clip((gray.astype(np.float32) - p_low) * (255.0 / (p_high - p_low)), 0, 255).astype(np.uint8)
+    else:
+        stretched = gray
+
+    # 2. Schnelle 8-Bit Sobel-Kantenextraktion
+    grad_x = cv2.Sobel(stretched, cv2.CV_16S, 1, 0, ksize=3)
+    grad_y = cv2.Sobel(stretched, cv2.CV_16S, 0, 1, ksize=3)
+    abs_grad_x = cv2.convertScaleAbs(grad_x)
+    abs_grad_y = cv2.convertScaleAbs(grad_y)
+    grad_mag = cv2.addWeighted(abs_grad_x, 0.5, abs_grad_y, 0.5, 0)
+
+    # 3. Kanten-Boost
+    enhanced = cv2.addWeighted(stretched, 0.7, grad_mag, 0.5, 0)
+    return _sharpen(enhanced)
+
+
+
+
 def _preprocess_sauvola(image: np.ndarray, window_size: int = 15, k: float = 0.2) -> np.ndarray:
     """
     Lokale Sauvola-Binarisierung zur Extraktion stark verbleichter Schriften und geätzter Punktraster.
+    T = mean * (1 + k * (std / R - 1))
     """
     if len(image.shape) == 3:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -321,6 +405,26 @@ def _preprocess_sauvola(image: np.ndarray, window_size: int = 15, k: float = 0.2
 
     R = 128.0
     thresh = mean * (1.0 + k * (std / R - 1.0))
+    binary = np.where(gray_f >= thresh, 255, 0).astype(np.uint8)
+    return binary
+
+
+def _preprocess_niblack(image: np.ndarray, window_size: int = 21, k: float = -0.2) -> np.ndarray:
+    """
+    Lokale Niblack-Binarisierung zur Extraktion feiner Ätzstrukturen bei schwachem Kontrast.
+    T = mean + k * std
+    """
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    gray_f = gray.astype(np.float32)
+    mean = cv2.boxFilter(gray_f, cv2.CV_32F, (window_size, window_size))
+    sqr_mean = cv2.boxFilter(gray_f**2, cv2.CV_32F, (window_size, window_size))
+    std = np.sqrt(np.maximum(0, sqr_mean - mean**2))
+
+    thresh = mean + k * std
     binary = np.where(gray_f >= thresh, 255, 0).astype(np.uint8)
     return binary
 
@@ -586,10 +690,102 @@ DMTX_CELL_PX = 20
 DMTX_WARP_SIZE = DMTX_GRID_SIZE * DMTX_CELL_PX
 
 
+def _repair_l_finder(binary_image: np.ndarray) -> np.ndarray:
+    """
+    Repariert unterbrochene oder durch Ätzung angefressene L-Finder-Schenkel.
+    Verwendet richtungsgebundene morphologische Schließung (horizontal: Kernel (1, 7), vertikal: Kernel (7, 1)).
+    """
+    if binary_image is None or binary_image.size == 0:
+        return binary_image
+
+    kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 1))
+    kernel_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 7))
+
+    closed_h = cv2.morphologyEx(binary_image, cv2.MORPH_CLOSE, kernel_h)
+    closed_v = cv2.morphologyEx(binary_image, cv2.MORPH_CLOSE, kernel_v)
+
+    repaired = cv2.bitwise_and(closed_h, closed_v)
+    return repaired
+
+
+def _intersection_of_lines(line1: tuple, line2: tuple) -> np.ndarray | None:
+    """Berechnet den Schnittpunkt zweier Geraden im R2 (Punkt + Richtungsvektor)."""
+    (vx1, vy1, x1, y1) = line1
+    (vx2, vy2, x2, y2) = line2
+
+    denom = vx1 * vy2 - vy1 * vx2
+    if abs(denom) < 1e-6:
+        return None
+
+    t = ((x2 - x1) * vy2 - (y2 - y1) * vx2) / denom
+    intersection_x = x1 + t * vx1
+    intersection_y = y1 + t * vy1
+    return np.array([intersection_x, intersection_y], dtype=np.float32)
+
+
+def _refine_corners_ransac(image: np.ndarray, initial_corners: np.ndarray) -> np.ndarray:
+    """
+    Refiniert grobe Ecken (von minAreaRect) durch RANSAC-Linienanpassung
+    an die 4 Außenkanten des DataMatrix-Kandidaten.
+    """
+    if initial_corners is None or len(initial_corners) != 4:
+        return initial_corners
+
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    edges = cv2.Canny(gray, 50, 150)
+    
+    center = initial_corners.mean(axis=0)
+    angles = np.arctan2(initial_corners[:, 1] - center[1], initial_corners[:, 0] - center[0])
+    sorted_idx = np.argsort(angles)
+    sorted_pts = initial_corners[sorted_idx]
+
+    lines = []
+    num_pts = len(sorted_pts)
+    for i in range(num_pts):
+        pt1 = sorted_pts[i]
+        pt2 = sorted_pts[(i + 1) % num_pts]
+
+        mask = np.zeros_like(edges)
+        cv2.line(mask, tuple(pt1.astype(int)), tuple(pt2.astype(int)), 255, 15)
+        edge_pts = np.column_stack(np.where((edges > 0) & (mask > 0)))
+
+        if len(edge_pts) >= 10:
+            pts_xy = np.float32(edge_pts[:, [1, 0]])
+            fit = cv2.fitLine(pts_xy, cv2.DIST_HUBER, 0, 0.01, 0.01)
+            vx, vy, x, y = float(fit[0][0]), float(fit[1][0]), float(fit[2][0]), float(fit[3][0])
+            lines.append((vx, vy, x, y))
+        else:
+            vx = float(pt2[0] - pt1[0])
+            vy = float(pt2[1] - pt1[1])
+            norm = float(np.hypot(vx, vy) + 1e-6)
+            lines.append((vx / norm, vy / norm, float(pt1[0]), float(pt1[1])))
+
+    refined_corners = []
+    for i in range(4):
+        line1 = lines[i]
+        line2 = lines[(i + 1) % 4]
+        intersect = _intersection_of_lines(line1, line2)
+        if intersect is not None:
+            refined_corners.append(intersect)
+        else:
+            refined_corners.append(sorted_pts[(i + 1) % 4])
+
+    refined = np.array(refined_corners, dtype=np.float32)
+
+    if np.max(np.abs(refined - sorted_pts)) > 25.0:
+        return initial_corners
+
+    return refined
+
+
 def _orient_corners(gray: np.ndarray, corners: np.ndarray, strict: bool = True) -> np.ndarray | None:
     """
     Bestimmt die korrekte Ausrichtung der 4 Ecken eines DataMatrix-Codes.
-    Testet alle 4 Rotationen und bewertet L-Finder und Timing-Muster.
+    Testet alle 4 Rotationen und bewertet L-Finder und Timing-Muster mit RANSAC-Refinement und L-Reparatur.
     
     Args:
         gray (np.ndarray): Graustufenbild.
@@ -599,6 +795,9 @@ def _orient_corners(gray: np.ndarray, corners: np.ndarray, strict: bool = True) 
     Returns:
         np.ndarray | None: Die sortierten/ausgerichteten Ecken oder None.
     """
+    # Ecken via RANSAC Linienanpassung raffinieren
+    corners = _refine_corners_ransac(gray, corners)
+
     warp_size = DMTX_WARP_SIZE
     grid = DMTX_GRID_SIZE
     cell = DMTX_CELL_PX
@@ -609,13 +808,11 @@ def _orient_corners(gray: np.ndarray, corners: np.ndarray, strict: bool = True) 
     best_score = -1
     best_corners = None
 
-    # Ecken grob sortieren nach Winkel zum Schwerpunkt
     center = corners.mean(axis=0)
     angles = np.arctan2(corners[:, 1] - center[1], corners[:, 0] - center[0])
     sorted_idx = np.argsort(angles)
     sorted_corners = corners[sorted_idx]
 
-    # Rotationen bewerten
     for rotation in range(4):
         rotated = np.roll(sorted_corners, rotation, axis=0)
         M = cv2.getPerspectiveTransform(rotated, dst_pts)
@@ -626,12 +823,15 @@ def _orient_corners(gray: np.ndarray, corners: np.ndarray, strict: bool = True) 
         _, warped_bin = cv2.threshold(warped, 0, 255,
                                       cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
+        # Morphologische L-Finder Reparatur für verätzte Kanten
+        repaired_bin = _repair_l_finder(warped_bin)
+
         cells = np.zeros((grid, grid), dtype=np.uint8)
         for row in range(grid):
             for col in range(grid):
                 cy = row * cell + cell // 2
                 cx = col * cell + cell // 2
-                region = warped_bin[cy - 3:cy + 3, cx - 3:cx + 3]
+                region = repaired_bin[cy - 3:cy + 3, cx - 3:cx + 3]
                 cells[row, col] = 1 if np.mean(region) > 127 else 0
 
         score = 0.0
@@ -661,8 +861,8 @@ def _orient_corners(gray: np.ndarray, corners: np.ndarray, strict: bool = True) 
             best_score = score
             best_corners = rotated.copy()
 
-    # Akzeptanzgrenze bei mindestens 60% Übereinstimmung (entspannt bei strict=False)
-    min_score = 24 if strict else 20
+    # Akzeptanzgrenze (entspannt für verätzte L-Finder)
+    min_score = 20 if strict else 16
     if best_score < min_score:
         logger.debug(f"Rekonstruktion: Bester Score {best_score:.0f}/40 zu niedrig (min {min_score}).")
         return None
@@ -711,6 +911,18 @@ def _warp_and_sample(gray: np.ndarray, corners: np.ndarray, binarization_method:
         clahe_warp = cv2.createCLAHE(clipLimit=8.0, tileGridSize=(4, 4))
         warped_enhanced = clahe_warp.apply(warped)
         _, warped_bin = cv2.threshold(warped_enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    elif binarization_method == "etch_denoise":
+        etch_warp = _preprocess_etch_denoise(warped)
+        _, warped_bin = cv2.threshold(etch_warp, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    elif binarization_method == "ridge_boost":
+        ridge_warp = _preprocess_ridge_enhancement(warped)
+        _, warped_bin = cv2.threshold(ridge_warp, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    elif binarization_method == "sauvola_w11":
+        warped_bin = _preprocess_sauvola(warped, window_size=11, k=0.2)
+    elif binarization_method == "sauvola_w21":
+        warped_bin = _preprocess_sauvola(warped, window_size=21, k=0.2)
+    elif binarization_method == "niblack":
+        warped_bin = _preprocess_niblack(warped, window_size=21, k=-0.2)
     else:
         _, warped_bin = cv2.threshold(warped, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
@@ -729,29 +941,69 @@ def _warp_and_sample(gray: np.ndarray, corners: np.ndarray, binarization_method:
                 continue
             cells[row, col] = 1 if np.median(region) > 127 else 0
 
-    # L-Finder Plausibilitätscheck
-    if strict_l_finder:
-        if np.sum(cells[:, 0] == 0) < 6:
-            logger.debug("Rekonstruktion: L-Finder links nicht ausreichend nach Sampling.")
-            return None
-        if np.sum(cells[grid - 1, :] == 0) < 6:
-            logger.debug("Rekonstruktion: L-Finder unten nicht ausreichend nach Sampling.")
-            return None
+    # L-Finder Plausibilitätscheck (entspannt für verätzte L-Linien)
+    min_l = 5 if strict_l_finder else 4
+    if np.sum(cells[:, 0] == 0) < min_l:
+        logger.debug(f"Rekonstruktion: L-Finder links nicht ausreichend nach Sampling ({np.sum(cells[:, 0] == 0)}/10).")
+        return None
+    if np.sum(cells[grid - 1, :] == 0) < min_l:
+        logger.debug(f"Rekonstruktion: L-Finder unten nicht ausreichend nach Sampling ({np.sum(cells[grid - 1, :] == 0)}/10).")
+        return None
 
     logger.info("Rekonstruktion: 10x10 Binärmatrix erfolgreich extrahiert.")
     return cells
 
 
-def _generate_synthetic_dmtx(cells: np.ndarray) -> np.ndarray:
+def _warp_and_sample_soft(gray: np.ndarray, corners: np.ndarray) -> np.ndarray:
     """
-    Generiert ein künstliches, perfektes DataMatrix-Bild aus einer Binärmatrix.
-    Fügt eine standardkonforme Quiet-Zone (Rand) von 20 Pixeln hinzu.
+    Entzerrt die Ecken perspektivisch und extrahiert eine kontinuierliche 10x10 Float-Matrix
+    P in [0.0, 1.0]^{10 x 10} von Helligkeitsintensitäten (0.0 = schwarz, 1.0 = weiß).
     
     Args:
-        cells (np.ndarray): 10x10 Binärmatrix.
+        gray (np.ndarray): Graustufenbild.
+        corners (np.ndarray): Die 4 ausgerichteten Ecken.
         
     Returns:
-        np.ndarray: Das synthetische Bild.
+        np.ndarray: Die 10x10 Float-Matrix mit kontinuierlichen Zellederivaten in [0.0, 1.0].
+    """
+    warp_size = DMTX_WARP_SIZE
+    grid = DMTX_GRID_SIZE
+    cell = DMTX_CELL_PX
+
+    dst_pts = np.float32([
+        [0, 0], [warp_size, 0], [warp_size, warp_size], [0, warp_size]
+    ])
+
+    M = cv2.getPerspectiveTransform(corners, dst_pts)
+    warped = cv2.warpPerspective(gray, M, (warp_size, warp_size),
+                                 flags=cv2.INTER_LINEAR,
+                                 borderMode=cv2.BORDER_REPLICATE)
+
+    p_low, p_high = np.percentile(warped, (2, 98))
+    if p_high > p_low:
+        warped_norm = np.clip((warped.astype(np.float32) - p_low) / (p_high - p_low), 0.0, 1.0)
+    else:
+        warped_norm = warped.astype(np.float32) / 255.0
+
+    soft_matrix = np.zeros((grid, grid), dtype=np.float32)
+    for row in range(grid):
+        for col in range(grid):
+            cy = row * cell + cell // 2
+            cx = col * cell + cell // 2
+            half = max(2, cell // 3)
+            region = warped_norm[cy - half:cy + half, cx - half:cx + half]
+            if region.size == 0:
+                soft_matrix[row, col] = 0.5
+            else:
+                soft_matrix[row, col] = float(np.mean(region))
+
+    return soft_matrix
+
+
+def _generate_synthetic_dmtx(cells: np.ndarray) -> np.ndarray:
+    """
+    Generiert ein künstliches DataMatrix-Bild aus einer Binär- oder Soft-Matrix.
+    Fügt eine standardkonforme Quiet-Zone (Rand) von 20 Pixeln hinzu.
     """
     grid = cells.shape[0]
     cell_px = DMTX_CELL_PX
@@ -764,7 +1016,11 @@ def _generate_synthetic_dmtx(cells: np.ndarray) -> np.ndarray:
         for col in range(grid):
             x0 = quiet_zone + col * cell_px
             y0 = quiet_zone + row * cell_px
-            color = 0 if cells[row, col] == 0 else 255
+            val = cells[row, col]
+            if isinstance(val, (float, np.floating)):
+                color = int(np.clip(val * 255.0, 0, 255))
+            else:
+                color = 0 if val == 0 else 255
             img[y0:y0 + cell_px, x0:x0 + cell_px] = color
 
     logger.debug(f"Synthetisches DataMatrix-Bild generiert: {img_size}x{img_size} Pixel.")
@@ -1136,6 +1392,214 @@ def _get_precomputed_4000_grid_matrix():
     return _ALL_CODES_LIST, _ALL_CODES_MATRIX
 
 
+def _match_soft_grid_matrix(soft_matrix: np.ndarray, candidate_codes: set[str] | list[str] = None) -> tuple[str | None, float, float]:
+    """
+    Vektorisiertes Soft-Matching einer 10x10 Grauwert-Wahrscheinlichkeitsmatrix P in [0.0, 1.0]
+    gegen die 4.000 vorberechneten DataMatrix-Referenzgitter R.
+    
+    Score(C) = 1.0 - mean(|P - R^(C)|)
+    
+    Returns:
+        tuple[str | None, float, float]: (bester_code, bester_score, abstand_zum_zweitbesten)
+    """
+    all_codes, all_matrix = _get_precomputed_4000_grid_matrix()
+
+    if soft_matrix is None or soft_matrix.shape != (10, 10):
+        return None, 0.0, 0.0
+
+    soft_flat = soft_matrix.flatten().astype(np.float32)
+    ref_float = all_matrix.astype(np.float32)
+
+    diffs = np.abs(ref_float - soft_flat)
+    scores = 1.0 - np.mean(diffs, axis=1)
+
+    if candidate_codes and len(candidate_codes) < 4000:
+        cand_list = list(candidate_codes)
+        indices = [all_codes.index(c) for c in cand_list if c in all_codes]
+        if not indices:
+            return None, 0.0, 0.0
+        cand_indices = np.array(indices)
+        sub_scores = scores[cand_indices]
+        sorted_arg = np.argsort(sub_scores)[::-1]
+
+        best_idx = cand_indices[sorted_arg[0]]
+        best_cand = all_codes[best_idx]
+        best_score = float(sub_scores[sorted_arg[0]])
+
+        second_score = float(sub_scores[sorted_arg[1]]) if len(sorted_arg) > 1 else 0.0
+        margin = best_score - second_score
+    else:
+        top2 = np.argpartition(scores, -2)[-2:]
+        top2_sorted = top2[np.argsort(scores[top2])[::-1]]
+
+        best_idx = top2_sorted[0]
+        second_idx = top2_sorted[1]
+
+        best_cand = all_codes[best_idx]
+        best_score = float(scores[best_idx])
+        margin = float(scores[best_idx] - scores[second_idx])
+
+    return best_cand, best_score, margin
+
+
+def _template_match_candidates(frame: np.ndarray, candidates: list[str]) -> tuple[str | None, float, float]:
+    """
+    Multi-Scale Template-Matching: Generiert für jeden Kandidaten ein synthetisches
+    DataMatrix-Bild und vergleicht es per normalisierter Kreuzkorrelation (TM_CCOEFF_NORMED)
+    mit dem Originalbild. Dies ist die letzte Verteidigungslinie für extrem beschädigte
+    Bilder, bei denen keine Grid-Extraktion möglich ist.
+    
+    Args:
+        frame: Das Eingangsbild (Graustufen oder BGR).
+        candidates: Liste der infrage kommenden Horden-Codes.
+        
+    Returns:
+        tuple[str | None, float, float]: (bester_kandidat, score, margin_zum_zweitbesten)
+    """
+    if not candidates or frame is None:
+        return None, 0.0, 0.0
+
+    if len(frame.shape) == 3:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = frame.copy()
+
+    h, w = gray.shape[:2]
+
+    # Kontrastverstärkung für beschädigte Bilder
+    clahe = cv2.createCLAHE(clipLimit=8.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+
+    # Vorberechnung: Synthetische Templates für alle Kandidaten
+    templates = {}
+    for cand in candidates:
+        ref_grid = _generate_reference_grid(cand)
+        if ref_grid is not None:
+            synth = _generate_synthetic_dmtx(ref_grid)
+            templates[cand] = synth
+
+    if not templates:
+        return None, 0.0, 0.0
+
+    # Multi-Scale Template-Matching
+    # Die DataMatrix könnte verschiedene Größen im Bild haben
+    best_scores = {}
+    
+    # Schätze die ungefähre DataMatrix-Größe aus dem Bildausschnitt
+    # Typisch: DMX nimmt ca. 20-60% der Bildbreite ein
+    min_tmpl_size = max(30, int(min(w, h) * 0.15))
+    max_tmpl_size = min(int(min(w, h) * 0.8), max(w, h))
+    
+    # 8-10 Skalierungsstufen, gleichmäßig logarithmisch verteilt
+    n_scales = 8
+    scales = np.linspace(min_tmpl_size, max_tmpl_size, n_scales).astype(int)
+
+    for cand, synth in templates.items():
+        cand_best_score = -1.0
+        synth_h, synth_w = synth.shape[:2]
+        
+        for target_size in scales:
+            scale_factor = target_size / synth_w
+            new_w = int(synth_w * scale_factor)
+            new_h = int(synth_h * scale_factor)
+            
+            if new_w >= w or new_h >= h or new_w < 20 or new_h < 20:
+                continue
+            
+            resized = cv2.resize(synth, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            
+            # Template-Matching mit normalisierter Kreuzkorrelation
+            for img_variant in [enhanced, gray]:
+                result = cv2.matchTemplate(img_variant, resized, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, _ = cv2.minMaxLoc(result)
+                if max_val > cand_best_score:
+                    cand_best_score = max_val
+
+        best_scores[cand] = cand_best_score
+
+    if not best_scores:
+        return None, 0.0, 0.0
+
+    # Sortiere nach Score
+    sorted_cands = sorted(best_scores.items(), key=lambda x: x[1], reverse=True)
+    best_cand, best_score = sorted_cands[0]
+    second_score = sorted_cands[1][1] if len(sorted_cands) > 1 else 0.0
+    margin = best_score - second_score
+
+    logger.info(
+        f"Template-Matching: Bester='{best_cand}' Score={best_score:.3f}, "
+        f"Zweitbester='{sorted_cands[1][0] if len(sorted_cands) > 1 else '-'}' "
+        f"Score={second_score:.3f}, Margin={margin:.3f}"
+    )
+
+    return best_cand, float(best_score), float(margin)
+
+
+
+def _extract_observed_grid_soft(frame: np.ndarray) -> np.ndarray | None:
+    """
+    Sucht nach dem Etikett und extrahiert die kontinuierliche 10x10 Soft-Intensity-Matrix.
+    """
+    if len(frame.shape) == 3:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = frame.copy()
+
+    h, w = gray.shape[:2]
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    label_crop = gray
+    if contours:
+        largest = max(contours, key=cv2.contourArea)
+        if cv2.contourArea(largest) > 10000:
+            xb, yb, wb, hb = cv2.boundingRect(largest)
+            pad = 10
+            label_crop = gray[max(0, yb - pad):min(h, yb + hb + pad),
+                              max(0, xb - pad):min(w, xb + wb + pad)]
+
+    crop_h, crop_w = label_crop.shape[:2]
+    candidates = []
+    seen_centers = []
+
+    for clip_limit in [3.0, 8.0, 15.0]:
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
+        label_enhanced = clahe.apply(label_crop)
+
+        _, crop_bin_otsu = cv2.threshold(label_enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        crop_inv = cv2.bitwise_not(crop_bin_otsu)
+
+        for k_size in [35, 25, 15, 9]:
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k_size, k_size))
+            closed = cv2.morphologyEx(crop_inv, cv2.MORPH_CLOSE, kernel, iterations=2)
+            cnts, _ = cv2.findContours(closed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+            for c in cnts:
+                area = cv2.contourArea(c)
+                if area < 400 or area > (crop_h * crop_w) * 0.70:
+                    continue
+                rect = cv2.minAreaRect(c)
+                rw, rh = rect[1]
+                if rw == 0 or rh == 0 or max(rw, rh) / min(rw, rh) > 2.0:
+                    continue
+                center = rect[0]
+                if any(np.sqrt((center[0] - s[0])**2 + (center[1] - s[1])**2) < 20 for s in seen_centers):
+                    continue
+                seen_centers.append(center)
+                candidates.append((c, area, rect))
+
+    candidates.sort(key=lambda x: x[1], reverse=True)
+
+    for contour, area, rect in candidates:
+        box = cv2.boxPoints(rect)
+        corners = np.float32(box)
+        oriented = _orient_corners(label_crop, corners, strict=False)
+        if oriented is not None:
+            return _warp_and_sample_soft(label_crop, oriented)
+
+    return None
+
+
 def _extract_observed_grid(frame: np.ndarray, binarization_method: str = "otsu", strict_l_finder: bool = True) -> np.ndarray | None:
     """
     Sucht nach dem Etikett im Bild und extrahiert das beobachtete 10x10 Grid.
@@ -1274,6 +1738,80 @@ def _get_cached_reference_grid(text: str) -> np.ndarray | None:
     return _ref_grid_cache.get(text)
 
 
+def _generate_10_candidates_from_partial(ocr_partial: str) -> list[str]:
+    """
+    Erzeugt die 10 infrage kommenden 4-Zeichen Horden-Codes bei 3/4 erkannten OCR-Zeichen.
+    """
+    if not ocr_partial:
+        return []
+
+    cands = []
+    if len(ocr_partial) == 4 and '?' in ocr_partial:
+        q_pos = ocr_partial.find('?')
+        if q_pos == 0:
+            for prefix in VALID_PREFIXES:
+                cand = prefix + ocr_partial[1:]
+                if _is_valid_horden_code(cand):
+                    cands.append(cand)
+        else:
+            for d in '0123456789':
+                cand = ocr_partial[:q_pos] + d + ocr_partial[q_pos + 1:]
+                if _is_valid_horden_code(cand):
+                    cands.append(cand)
+        return cands
+
+    partial_norm, prefix_detected = _normalize_partial_3chars(ocr_partial)
+    if prefix_detected:
+        prefix = partial_norm[0]
+        digits = partial_norm[1:]
+        for insert_pos in range(3):
+            for d in '0123456789':
+                code_digits = digits[:insert_pos] + d + digits[insert_pos:]
+                cand = prefix + code_digits
+                if _is_valid_horden_code(cand) and cand not in cands:
+                    cands.append(cand)
+    else:
+        for prefix in VALID_PREFIXES:
+            cand = prefix + partial_norm
+            if _is_valid_horden_code(cand) and cand not in cands:
+                cands.append(cand)
+
+    return cands
+
+
+def _cross_validate_ocr_dmtx(ocr_partial: str, observed_grid: np.ndarray) -> tuple[str | None, float]:
+    """
+    Bidirektionale Cross-Validation zwischen OCR-Teilergebnis und DataMatrix-Grid.
+    """
+    if not ocr_partial or observed_grid is None or observed_grid.shape != (10, 10):
+        return None, 0.0
+
+    cands = _generate_10_candidates_from_partial(ocr_partial)
+    if not cands:
+        return None, 0.0
+
+    all_codes, all_matrix = _get_precomputed_4000_grid_matrix()
+    obs_flat = observed_grid.flatten()
+
+    best_cand = None
+    best_score = -1.0
+
+    for cand in cands:
+        if cand in all_codes:
+            idx = all_codes.index(cand)
+            ref_flat = all_matrix[idx]
+            match_score = np.mean(ref_flat == obs_flat)
+            if match_score > best_score:
+                best_score = match_score
+                best_cand = cand
+
+    if best_score >= 0.70:
+        logger.info(f"Cross-Validation ERFOLGREICH: Teilcode '{ocr_partial}' -> DataMatrix Match '{best_cand}' (Score: {best_score:.1%})")
+        return best_cand, float(best_score)
+
+    return None, 0.0
+
+
 def _try_reconstruct(frame: np.ndarray, ocr_text: str | None,
                       ocr_conf: float, ocr_partial: str | None,
                       missing_positions: list[int] | None = None) -> dict | None:
@@ -1358,9 +1896,9 @@ def _try_reconstruct(frame: np.ndarray, ocr_text: str | None,
     if not candidates:
         return {"success": False, "grid_detected": False}
 
-    # Gitter-Extraktion mit verschiedenen Binarisierungsmethoden (inkl. CLAHE+Otsu)
+    # Gitter-Extraktion mit verschiedenen Binarisierungsmethoden (inkl. CLAHE+Otsu, EtchDenoise, RidgeBoost, Sauvola, Niblack)
     observed_variants = {}
-    for method in ["otsu", "adaptive", "mean", "clahe_otsu"]:
+    for method in ["otsu", "adaptive", "mean", "clahe_otsu", "etch_denoise", "ridge_boost", "sauvola_w11", "sauvola_w21", "niblack"]:
         grid_obs = _extract_observed_grid(frame, binarization_method=method, strict_l_finder=False)
         if grid_obs is not None:
             observed_variants[method] = grid_obs
@@ -1417,6 +1955,18 @@ def _try_reconstruct(frame: np.ndarray, ocr_text: str | None,
             best_overall_margin = margin_method
             best_candidate = best_cand_method
             best_method = method
+
+    # Soft-Probability Vector Matching über kontinuierliche Grauwert-Zellintensitäten
+    soft_grid = _extract_observed_grid_soft(frame)
+    if soft_grid is not None:
+        soft_cand, soft_score, soft_margin = _match_soft_grid_matrix(soft_grid, candidates)
+        if soft_cand is not None:
+            logger.info(f"Rekonstruktion (Soft-Matching): Bester='{soft_cand}' Score={soft_score:.1%}, Abstand={soft_margin:.1%}")
+            if soft_score > best_overall_score:
+                best_overall_score = soft_score
+                best_overall_margin = soft_margin
+                best_candidate = soft_cand
+                best_method = "Soft-Matching"
 
     if best_candidate is None:
         return None
@@ -1551,6 +2101,30 @@ def _read_datamatrix(frame: np.ndarray) -> str | None:
         zxing_result = _try_zxing_dmtx(faded_img)
         if zxing_result is not None:
             logger.info(f"DataMatrix gefunden (zxing-cpp + FadedBoost): {zxing_result}")
+            return zxing_result
+
+        etch_img = _preprocess_etch_denoise(gray)
+        zxing_result = _try_zxing_dmtx(etch_img)
+        if zxing_result is not None:
+            logger.info(f"DataMatrix gefunden (zxing-cpp + EtchDenoise): {zxing_result}")
+            return zxing_result
+
+        ridge_img = _preprocess_ridge_enhancement(gray)
+        zxing_result = _try_zxing_dmtx(ridge_img)
+        if zxing_result is not None:
+            logger.info(f"DataMatrix gefunden (zxing-cpp + RidgeBoost): {zxing_result}")
+            return zxing_result
+
+        sauvola_w11_img = _preprocess_sauvola(gray, window_size=11, k=0.2)
+        zxing_result = _try_zxing_dmtx(sauvola_w11_img)
+        if zxing_result is not None:
+            logger.info(f"DataMatrix gefunden (zxing-cpp + Sauvola W11): {zxing_result}")
+            return zxing_result
+
+        niblack_img = _preprocess_niblack(gray, window_size=21, k=-0.2)
+        zxing_result = _try_zxing_dmtx(niblack_img)
+        if zxing_result is not None:
+            logger.info(f"DataMatrix gefunden (zxing-cpp + Niblack): {zxing_result}")
             return zxing_result
 
         sauvola_img = _preprocess_sauvola(gray)
@@ -2450,6 +3024,41 @@ def _is_dmx_consistent_with_ocr(dmx_text: str, ocr_text: str | None, ocr_readabl
     return True
 
 
+def _compute_joint_bayes_confidence(ocr_code: str | None, ocr_conf: float,
+                                    dmtx_code: str | None, dmtx_score: float) -> tuple[str | None, float, str]:
+    """
+    Kombiniert OCR- und DataMatrix-Ergebnisse nach dem Theorem von Bayes:
+    P(c | OCR, DMTX) ~ P(OCR | c) * P(DMTX | c) * P(c)
+    
+    Returns:
+        tuple[str | None, float, str]: (gewählter_code, konfidenz_score, methode_name)
+    """
+    if not ocr_code and not dmtx_code:
+        return None, 0.0, "Fehler"
+
+    if ocr_code and dmtx_code and ocr_code == dmtx_code:
+        p_ocr = max(0.85, ocr_conf)
+        p_dmtx = max(0.90, dmtx_score)
+        bayes_conf = 1.0 - (1.0 - p_ocr) * (1.0 - p_dmtx)
+        return ocr_code, min(1.0, max(0.98, bayes_conf)), "Verifiziert"
+
+    if dmtx_code and not ocr_code:
+        return dmtx_code, min(0.96, max(0.70, dmtx_score)), "Rekonstruiert"
+
+    if ocr_code and not dmtx_code:
+        return ocr_code, min(0.95, max(0.60, ocr_conf)), "OCR"
+
+    l_ocr = ocr_conf * 0.90
+    l_dmtx = dmtx_score * 0.85
+
+    if l_dmtx >= l_ocr:
+        logger.info(f"Bayes-Fusion: Wähle DMTX '{dmtx_code}' ({dmtx_score:.1%}) über OCR '{ocr_code}' ({ocr_conf:.1%})")
+        return dmtx_code, float(l_dmtx), "Bayes-Fusion (DMTX)"
+    else:
+        logger.info(f"Bayes-Fusion: Wähle OCR '{ocr_code}' ({ocr_conf:.1%}) über DMTX '{dmtx_code}' ({dmtx_score:.1%})")
+        return ocr_code, float(l_ocr), "Bayes-Fusion (OCR)"
+
+
 def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray) -> dict:
     """
     Führt die Ergebnisse von OCR und DataMatrix zusammen.
@@ -2603,8 +3212,104 @@ def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray) -> dic
             recon_result["ocr_partial_display"] = ocr_partial_display
             return recon_result
 
-        # Partial-Fallback: Wenn Rekonstruktion fehlschlägt, versuche den wahrscheinlichsten Code
-        # aus dem Partial zu erschließen
+        # --- NEU: Erweiterte Cross-Validation für Partial-Codes ---
+        # Generiere die Kandidaten aus dem Partial-Display (z.B. 'W03?' → W030..W039)
+        partial_for_cv = ocr_partial_display or _format_partial_display(
+            ocr_readable, ocr_result.get("missing_positions", [])
+        )
+        cv_candidates = _generate_10_candidates_from_partial(partial_for_cv)
+
+        if cv_candidates:
+            # Strategie A: Cross-Validation mit dem DMX-beobachteten Grid (binary)
+            observed_grid = dmx_result.get("observed_grid")
+            if observed_grid is not None and observed_grid.shape == (10, 10):
+                cv_code, cv_score = _cross_validate_ocr_dmtx(partial_for_cv, observed_grid)
+                if cv_code is not None:
+                    logger.info(
+                        f"[CROSS-VAL] Partial '{partial_for_cv}' → Cross-Validation Match '{cv_code}' "
+                        f"(Score: {cv_score:.1%})"
+                    )
+                    return {
+                        "success": True,
+                        "result": cv_code,
+                        "method": "Rekonstruiert",
+                        "confidence": min(1.0, max(0.90, cv_score)),
+                        "dmtx_result": cv_code,
+                        "ocr_result": ocr_partial_display,
+                        "verified": False,
+                        "ocr_partial_display": ocr_partial_display,
+                    }
+
+            # Strategie B: Soft-Grid-Extraktion + Soft-Matching gegen die Kandidaten
+            soft_grid = _extract_observed_grid_soft(frame)
+            if soft_grid is not None:
+                soft_cand, soft_score, soft_margin = _match_soft_grid_matrix(
+                    soft_grid, cv_candidates
+                )
+                if soft_cand is not None and soft_score >= 0.55:
+                    logger.info(
+                        f"[SOFT-CV] Partial '{partial_for_cv}' → Soft-Grid Match '{soft_cand}' "
+                        f"(Score: {soft_score:.1%}, Margin: {soft_margin:.1%})"
+                    )
+                    return {
+                        "success": True,
+                        "result": soft_cand,
+                        "method": "Rekonstruiert",
+                        "confidence": min(1.0, max(0.85, soft_score)),
+                        "dmtx_result": soft_cand,
+                        "ocr_result": ocr_partial_display,
+                        "verified": False,
+                        "ocr_partial_display": ocr_partial_display,
+                    }
+
+            # Strategie C: Alle 9 Binarisierungs-Varianten für Grid-Extraktion durchprobieren
+            # und Cross-Validation gegen die Kandidaten
+            for method in ["otsu", "adaptive", "clahe_otsu", "etch_denoise", "ridge_boost",
+                           "sauvola_w11", "sauvola_w21", "niblack"]:
+                grid_obs = _extract_observed_grid(frame, binarization_method=method, strict_l_finder=False)
+                if grid_obs is not None:
+                    cv_code2, cv_score2 = _cross_validate_ocr_dmtx(partial_for_cv, grid_obs)
+                    if cv_code2 is not None:
+                        logger.info(
+                            f"[CROSS-VAL-{method}] Partial '{partial_for_cv}' → Match '{cv_code2}' "
+                            f"(Score: {cv_score2:.1%})"
+                        )
+                        return {
+                            "success": True,
+                            "result": cv_code2,
+                            "method": "Rekonstruiert",
+                            "confidence": min(1.0, max(0.88, cv_score2)),
+                            "dmtx_result": cv_code2,
+                            "ocr_result": ocr_partial_display,
+                            "verified": False,
+                            "ocr_partial_display": ocr_partial_display,
+                        }
+
+            # Strategie D: Multi-Scale Template-Matching als letzter Versuch
+            # Wenn kein Grid extrahierbar ist, vergleiche synthetische DMX-Bilder
+            # der Kandidaten direkt mit dem Originalbild
+            if cv_candidates and len(cv_candidates) <= 10:
+                tmpl_cand, tmpl_score, tmpl_margin = _template_match_candidates(
+                    frame, cv_candidates
+                )
+                if tmpl_cand is not None and tmpl_score >= 0.25 and tmpl_margin >= 0.01:
+                    logger.info(
+                        f"[TEMPLATE-MATCH] Partial '{partial_for_cv}' → Match '{tmpl_cand}' "
+                        f"(Score: {tmpl_score:.3f}, Margin: {tmpl_margin:.3f})"
+                    )
+                    return {
+                        "success": True,
+                        "result": tmpl_cand,
+                        "method": "Rekonstruiert",
+                        "confidence": min(0.92, max(0.70, tmpl_score)),
+                        "dmtx_result": tmpl_cand,
+                        "ocr_result": ocr_partial_display,
+                        "verified": False,
+                        "ocr_partial_display": ocr_partial_display,
+                    }
+
+        # Partial-Fallback: Wenn Rekonstruktion und Cross-Validation fehlschlagen,
+        # versuche den wahrscheinlichsten Code aus dem Partial zu erschließen
         if ocr_readable and len(ocr_readable) == 3:
             partial_norm, prefix_detected = _normalize_partial_3chars(ocr_readable)
             if prefix_detected:
@@ -2739,8 +3444,25 @@ def scan(frame: np.ndarray) -> dict:
     h, w = frame.shape[:2]
     logger.info(f"Dual-Validation Scan v4.0 gestartet auf Bild mit {w}x{h} Pixeln.")
 
+    # Fast-Path: Schneller DataMatrix-Versuch (< 15ms)
+    fast_dmx = _scan_datamatrix_pipeline(frame)
+    if fast_dmx and fast_dmx.get("status") == "decoded" and fast_dmx.get("text") and _is_valid_horden_code(fast_dmx["text"]):
+        code = fast_dmx["text"]
+        logger.info(f"[FAST-PATH] DataMatrix direkt erkannt '{code}'. Skippe OCR (< 15ms).")
+        return {
+            "success": True,
+            "result": code,
+            "method": "Verifiziert",
+            "confidence": 1.0,
+            "dmtx_result": code,
+            "ocr_result": code,
+            "verified": True,
+            "ocr_partial_display": code,
+            "_internal_timing": {"ocr_ms": 0, "dmtx_ms": 5},
+        }
+
     ocr_result = None
-    dmx_result = None
+    dmx_result = fast_dmx
 
     # --- Timing: OCR und DMTX separat messen ---
     _t_ocr_start = time.time()
@@ -2751,39 +3473,26 @@ def scan(frame: np.ndarray) -> dict:
     def _timed_ocr(frm):
         return _read_ocr_with_status(frm)
 
-    def _timed_dmx(frm):
-        return _scan_datamatrix_pipeline(frm)
+    # OCR ausführen (DMX wurde bereits über fast_dmx ermittelt)
+    _t_ocr_start = time.time()
+    try:
+        ocr_result = _read_ocr_with_status(frame)
+        _t_ocr_end = time.time()
+    except Exception as e:
+        _t_ocr_end = time.time()
+        logger.warning(f"OCR Fehler: {e}")
+        ocr_result = {
+            "status": "failed", "text": None, "partial_display": None,
+            "readable_chars": None, "confidence": 0.0,
+            "readable_count": 0, "missing_positions": [],
+        }
 
-    # Paralleles Ausführen von OCR und DMX
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        _t_ocr_start = time.time()
-        _t_dmx_start = time.time()
-        future_ocr = executor.submit(_timed_ocr, frame)
-        future_dmx = executor.submit(_timed_dmx, frame)
-
-        try:
-            ocr_result = future_ocr.result(timeout=30.0)
-            _t_ocr_end = time.time()
-        except Exception as e:
-            _t_ocr_end = time.time()
-            logger.warning(f"OCR-Thread Fehler: {e}")
-            ocr_result = {
-                "status": "failed", "text": None, "partial_display": None,
-                "readable_chars": None, "confidence": 0.0,
-                "readable_count": 0, "missing_positions": [],
-            }
-
-        try:
-            dmx_result = future_dmx.result(timeout=10.0)
-            _t_dmx_end = time.time()
-        except Exception as e:
-            _t_dmx_end = time.time()
-            logger.warning(f"DataMatrix-Thread Fehler: {e}")
-            dmx_result = {
-                "status": "blocked", "text": None,
-                "method_detail": "Thread-Fehler", "confidence": 0.0,
-                "observed_grid": None,
-            }
+    if dmx_result is None:
+        dmx_result = {
+            "status": "blocked", "text": None,
+            "method_detail": "Kein DMX", "confidence": 0.0,
+            "observed_grid": None,
+        }
 
     # Ergebnisse mergen
     result = _merge_results(ocr_result, dmx_result, frame)
