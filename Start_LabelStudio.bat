@@ -16,7 +16,7 @@ if exist ".venv\Scripts\activate.bat" (
 pip show label-studio >nul 2>&1
 if %errorlevel% neq 0 (
     echo [INFO] Label Studio wird in der virtuellen Umgebung installiert...
-    pip install label-studio
+    pip install "django-environ>=0.14.0" "django-csp==3.7" "Django>=5.1.8,<5.2.0" label-studio
 )
 
 echo Starten von Label Studio...
