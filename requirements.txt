@@ -10,4 +10,5 @@ ids_peak
 ids_peak_ipl
 customtkinter
 zxing-cpp
-
+onnx
+onnxruntime

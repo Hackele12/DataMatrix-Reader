@@ -10,6 +10,8 @@ import csv
 import json
 import os
 import sys
+import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from datetime import datetime
@@ -76,6 +78,12 @@ class LogAnalyzerApp(ctk.CTk):
         self._current_sidebar_width = 280
         self._sidebar_anim_job = None
         self._table_display_limit = 80  # Max. Zeilen pro Rendering (für max. Render-Geschwindigkeit)
+
+        # Performance-Flags für einfrierungsfreies Live-Update
+        self._is_checking_bg = False
+        self._dashboard_dirty = False
+        self._last_chart_draw_time = 0.0
+        self._chart_draw_timer = None
 
         self._build_ui()
         self._load_log_files_list()
@@ -588,91 +596,111 @@ class LogAnalyzerApp(ctk.CTk):
             return
 
         if self._auto_refresh_enabled and self._log_dir and os.path.exists(self._log_dir):
-            try:
-                latest_mtime = 0.0
-                file_count = 0
-                for root, _, files in os.walk(self._log_dir):
-                    for f in files:
-                        if f.endswith(".jsonl"):
-                            file_count += 1
-                            try:
-                                mt = os.path.getmtime(os.path.join(root, f))
-                                if mt > latest_mtime:
-                                    latest_mtime = mt
-                            except Exception:
-                                pass
-
-                # Nur neu laden, wenn es echte Änderungen gab
-                if latest_mtime != self._last_mtime and self._last_mtime != 0:
-                    self._last_mtime = latest_mtime
-                    self._reload_current_file()
-                elif self._last_mtime == 0:
-                    self._last_mtime = latest_mtime
-
-                files_hash = f"{file_count}-{latest_mtime}"
-                if files_hash != self._last_log_files_hash:
-                    if self._last_log_files_hash != "":
-                        self._load_log_files_list()
-                    self._last_log_files_hash = files_hash
-                    self._update_disk_info()
-            except Exception:
-                pass
+            if not getattr(self, "_is_checking_bg", False):
+                self._is_checking_bg = True
+                threading.Thread(target=self._bg_check_for_updates, daemon=True).start()
 
         self.after(2000, self._auto_refresh_check)
+
+    def _bg_check_for_updates(self):
+        """Asynchroner Mtime-Check im Hintergrundthread (verhindert Einfrieren der GUI)."""
+        try:
+            latest_mtime = 0.0
+            file_count = 0
+            for root, _, files in os.walk(self._log_dir):
+                for f in files:
+                    if f.endswith(".jsonl"):
+                        file_count += 1
+                        try:
+                            mt = os.path.getmtime(os.path.join(root, f))
+                            if mt > latest_mtime:
+                                latest_mtime = mt
+                        except Exception:
+                            pass
+
+            files_hash = f"{file_count}-{latest_mtime}"
+            need_reload = (latest_mtime != self._last_mtime and self._last_mtime != 0)
+            hash_changed = (files_hash != self._last_log_files_hash)
+
+            if need_reload or hash_changed:
+                self.after(0, lambda: self._on_update_detected(latest_mtime, files_hash, need_reload, hash_changed))
+            elif self._last_mtime == 0:
+                self._last_mtime = latest_mtime
+                self._last_log_files_hash = files_hash
+        except Exception:
+            pass
+        finally:
+            self._is_checking_bg = False
+
+    def _on_update_detected(self, latest_mtime, files_hash, need_reload, hash_changed):
+        """GUI-Hauptthread Callback bei Datenänderung."""
+        self._last_mtime = latest_mtime
+        if hash_changed:
+            if self._last_log_files_hash != "":
+                self._load_log_files_list()
+            self._last_log_files_hash = files_hash
+            self._update_disk_info()
+
+        if need_reload:
+            self._reload_current_file()
 
     def _reload_current_file(self):
         if not self._current_log_filepath:
             return
 
-        self._records.clear()
-        try:
-            target_files = []
-            if self._current_log_filepath == "__ALL__":
-                for root, _, files in os.walk(self._log_dir):
-                    for f in files:
-                        if f.endswith(".jsonl"):
-                            target_files.append(os.path.join(root, f))
-            elif os.path.exists(self._current_log_filepath):
-                if os.path.isdir(self._current_log_filepath):
-                    for root, _, files in os.walk(self._current_log_filepath):
+        if getattr(self, "_is_loading_records_bg", False):
+            return
+
+        self._is_loading_records_bg = True
+        filepath = self._current_log_filepath
+        log_dir = self._log_dir
+
+        def _bg_read():
+            records = []
+            try:
+                target_files = []
+                if filepath == "__ALL__":
+                    for root, _, files in os.walk(log_dir):
                         for f in files:
                             if f.endswith(".jsonl"):
                                 target_files.append(os.path.join(root, f))
-                else:
-                    target_files.append(self._current_log_filepath)
+                elif os.path.exists(filepath):
+                    if os.path.isdir(filepath):
+                        for root, _, files in os.walk(filepath):
+                            for f in files:
+                                if f.endswith(".jsonl"):
+                                    target_files.append(os.path.join(root, f))
+                    else:
+                        target_files.append(filepath)
 
-            latest_mtime = 0.0
-            for tf in target_files:
-                try:
-                    mt = os.path.getmtime(tf)
-                    if mt > latest_mtime:
-                        latest_mtime = mt
-                except Exception:
-                    pass
-            self._last_mtime = latest_mtime
-
-            for tf in target_files:
-                try:
-                    with open(tf, "r", encoding="utf-8") as f:
-                        for line in f:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                record = json.loads(line)
-                                if record.get("type") == "SESSION_END":
+                for tf in target_files:
+                    try:
+                        with open(tf, "r", encoding="utf-8") as f:
+                            for line in f:
+                                line = line.strip()
+                                if not line:
                                     continue
-                                self._records.append(record)
-                            except json.JSONDecodeError:
-                                pass
-                except Exception as e:
-                    print(f"Fehler beim Lesen der Datei {tf}: {e}")
+                                try:
+                                    record = json.loads(line)
+                                    if record.get("type") == "SESSION_END":
+                                        continue
+                                    records.append(record)
+                                except json.JSONDecodeError:
+                                    pass
+                    except Exception as e:
+                        print(f"Fehler beim Lesen der Datei {tf}: {e}")
 
-            # Chronologisch nach Zeitstempel sortieren (neueste zuerst)
-            self._records.sort(key=lambda r: r.get("ts", ""), reverse=True)
-        except Exception as e:
-            print(f"Fehler beim Nachladen der Log-Datei: {e}")
+                records.sort(key=lambda r: r.get("ts", ""), reverse=True)
+            except Exception as e:
+                print(f"Fehler beim Nachladen der Log-Datei: {e}")
 
+            self.after(0, lambda: self._on_records_loaded(records))
+
+        threading.Thread(target=_bg_read, daemon=True).start()
+
+    def _on_records_loaded(self, new_records: list):
+        self._is_loading_records_bg = False
+        self._records = new_records
         self._apply_filters()
         self._update_dashboard()
 
@@ -853,8 +881,12 @@ class LogAnalyzerApp(ctk.CTk):
 
     def _on_tab_changed(self, tab_name: str = ""):
         """Setzt die Filter auf Default zurück, wenn der Nutzer zum Dashboard wechselt."""
-        if tab_name == "Dashboard" or (hasattr(self, "main_container") and self.main_container.get() == "Dashboard"):
+        current_tab = tab_name or (hasattr(self, "main_container") and self.main_container.get())
+        if current_tab == "Dashboard":
             self._reset_filters()
+            if getattr(self, "_dashboard_dirty", False):
+                self._draw_charts()
+                self._dashboard_dirty = False
 
     def _reset_filters(self):
         """Setzt alle Explorer-Filter auf Standardwerte zurück."""
@@ -1075,8 +1107,31 @@ class LogAnalyzerApp(ctk.CTk):
         self.kpis["avg_duration"].configure(text=f"{avg_dur:.0f} ms")
         self.kpis["images"].configure(text=str(images_saved))
 
-        # Diagramme zeichnen
-        self._draw_charts()
+        # Diagramme nur neu zeichnen, wenn das Dashboard aktiv ist (sonst entprellt/verzögert)
+        current_tab = hasattr(self, "main_container") and self.main_container.get()
+        if current_tab == "Dashboard":
+            self._schedule_chart_redraw()
+            self._dashboard_dirty = False
+        else:
+            self._dashboard_dirty = True
+
+    def _schedule_chart_redraw(self):
+        """Drosselt das Neuzeichnen der Matplotlib-Diagramme auf max. alle 2,5 Sekunden."""
+        now = time.time()
+        if now - self._last_chart_draw_time >= 2.5:
+            self._last_chart_draw_time = now
+            self._draw_charts()
+        else:
+            if not getattr(self, "_chart_draw_timer", None):
+                delay = int((2.5 - (now - self._last_chart_draw_time)) * 1000) + 100
+                self._chart_draw_timer = self.after(max(200, delay), self._delayed_chart_redraw)
+
+    def _delayed_chart_redraw(self):
+        self._chart_draw_timer = None
+        current_tab = hasattr(self, "main_container") and self.main_container.get()
+        if current_tab == "Dashboard":
+            self._last_chart_draw_time = time.time()
+            self._draw_charts()
 
     def _draw_charts(self):
         # Altes Diagramm entfernen

@@ -1,0 +1,7 @@
+path: C:/Users/kremidas/Documents/DataDetector/dataset_v2
+train: images/train
+val: images/val
+
+names:
+  0: datamatrix
+  1: text

@@ -13,6 +13,8 @@ Features:
 """
 
 import logging
+import os
+import sys
 import time
 import cv2
 import numpy as np
@@ -31,6 +33,13 @@ USE_ZXING_FASTPATH = True
 # --- Erlaubte Zeichen für Horden-Codes ---
 ALLOWED_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 REQUIRED_LENGTH = 4
+
+# --- Pipeline 3: Referenzbild-Datenbank (Template-Matching gegen generated_codes) ---
+_REF_IMG_MATRIX = None    # np.ndarray (N, 10000) — Flattened binarisierte Referenzbilder
+_REF_IMG_CODES = None     # list[str] — Code-Namen in gleicher Reihenfolge
+_REF_IMG_SIZE = (100, 100)  # Normgröße für den Vergleich
+_REF_IMG_DIR = None       # Pfad zum generated_codes Ordner
+_REF_IMG_PACKED = None    # np.ndarray (N, 1250) — Gepackte Referenzbilder (packbits)
 
 
 def _load_dmtx():
@@ -124,6 +133,178 @@ def _try_zxing_dmtx(image: np.ndarray) -> str | None:
         logger.debug(f"zxing-cpp Fehler: {e}")
     
     return None
+
+
+# --- Trained AI Models (ONNX Runtime) & DataMatrix Generator ---
+_pacc_session = None
+_pacc_loaded = False
+
+_unet_session = None
+_unet_loaded = False
+
+_PACC_PREFIX_CLASSES = ['A', 'B', 'P', 'W']
+
+
+def _load_pacc():
+    """
+    Lädt das Position-Aware Char Classifier (PACC) ONNX Modell.
+    """
+    global _pacc_session, _pacc_loaded
+    if not _pacc_loaded:
+        try:
+            import onnxruntime as ort
+            model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models', 'char_classifier.onnx')
+            if os.path.exists(model_path):
+                opts = ort.SessionOptions()
+                opts.intra_op_num_threads = 1
+                opts.inter_op_num_threads = 1
+                _pacc_session = ort.InferenceSession(model_path, sess_options=opts, providers=['CPUExecutionProvider'])
+                logger.info("PACC Char-Classifier (ONNX) erfolgreich geladen.")
+            else:
+                logger.warning(f"PACC ONNX Modell nicht gefunden: {model_path}")
+        except Exception as e:
+            logger.warning(f"Fehler beim Laden von PACC ONNX: {e}")
+        _pacc_loaded = True
+    return _pacc_session
+
+
+def _load_unet_binarizer():
+    """
+    Lädt das MicroUNet DataMatrix-Binarisierer ONNX Modell.
+    """
+    global _unet_session, _unet_loaded
+    if not _unet_loaded:
+        try:
+            import onnxruntime as ort
+            model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models', 'unet_binarizer.onnx')
+            if os.path.exists(model_path):
+                opts = ort.SessionOptions()
+                opts.intra_op_num_threads = 1
+                opts.inter_op_num_threads = 1
+                _unet_session = ort.InferenceSession(model_path, sess_options=opts, providers=['CPUExecutionProvider'])
+                logger.info("MicroUNet DataMatrix-Binarisierer (ONNX) erfolgreich geladen.")
+            else:
+                logger.warning(f"MicroUNet ONNX Modell nicht gefunden: {model_path}")
+        except Exception as e:
+            logger.warning(f"Fehler beim Laden von MicroUNet ONNX: {e}")
+        _unet_loaded = True
+    return _unet_session
+
+
+def _predict_pacc(image: np.ndarray) -> tuple[str | None, float]:
+    """
+    Führt ultra-schnelle Klassifikation mit dem Position-Aware Char Classifier (PACC) durch (< 3ms).
+    
+    Args:
+        image (np.ndarray): Text-Crop oder Bildbereich des Etiketts.
+        
+    Returns:
+        tuple[str | None, float]: (erkoannter Code, Konfidenz) oder (None, 0.0)
+    """
+    session = _load_pacc()
+    if session is None or image is None or image.size == 0:
+        return None, 0.0
+
+    try:
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image.copy()
+
+        resized = cv2.resize(gray, (128, 32), interpolation=cv2.INTER_AREA)
+        inp = (resized.astype(np.float32) / 255.0)[np.newaxis, np.newaxis, :, :]
+
+        outputs = session.run(None, {"input": inp})
+        p0, p1, p2, p3 = outputs
+
+        def softmax(x):
+            e = np.exp(x - np.max(x))
+            return e / e.sum()
+
+        probs0 = softmax(p0[0])
+        probs1 = softmax(p1[0])
+        probs2 = softmax(p2[0])
+        probs3 = softmax(p3[0])
+
+        idx0 = int(np.argmax(probs0))
+        idx1 = int(np.argmax(probs1))
+        idx2 = int(np.argmax(probs2))
+        idx3 = int(np.argmax(probs3))
+
+        code = _PACC_PREFIX_CLASSES[idx0] + str(idx1) + str(idx2) + str(idx3)
+        confs = [probs0[idx0], probs1[idx1], probs2[idx2], probs3[idx3]]
+        avg_conf = float(np.mean(confs))
+
+        if _HORDEN_PATTERN.match(code):
+            return code, avg_conf
+    except Exception as e:
+        logger.debug(f"PACC Inferenz Fehler: {e}")
+
+    return None, 0.0
+
+
+def _preprocess_unet_binarize(image: np.ndarray) -> np.ndarray | None:
+    """
+    Wendet das MicroUNet Binarisierungsmodell auf ein Graustufenbild an (~8-10ms).
+    Erzeugt ein sauberes binäres Schwarz-Weiß-Bild der DataMatrix.
+    
+    Args:
+        image (np.ndarray): Graustufen- oder BGR-Bild.
+        
+    Returns:
+        np.ndarray | None: Binarisiertes Bild (uint8 0/255) oder None.
+    """
+    session = _load_unet_binarizer()
+    if session is None or image is None or image.size == 0:
+        return None
+
+    try:
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image.copy()
+
+        h, w = gray.shape[:2]
+        resized = cv2.resize(gray, (128, 128), interpolation=cv2.INTER_AREA)
+        inp = (resized.astype(np.float32) / 255.0)[np.newaxis, np.newaxis, :, :]
+
+        outputs = session.run(None, {"input": inp})
+        out_map = outputs[0][0, 0]
+
+        sig_map = 1.0 / (1.0 + np.exp(-out_map))
+        bin_128 = np.where(sig_map >= 0.5, 255, 0).astype(np.uint8)
+
+        binary_out = cv2.resize(bin_128, (w, h), interpolation=cv2.INTER_NEAREST)
+        return binary_out
+    except Exception as e:
+        logger.debug(f"MicroUNet Binarizer Fehler: {e}")
+        return None
+
+
+def _generate_datamatrix_image(data: str, output_path: str = None, cellsize: int = 10) -> np.ndarray | None:
+    """
+    Generiert einen synthetischen DataMatrix-Code (Schwarz/Weiß) mittels generate_datamatrix / pystrich.
+    
+    Args:
+        data (str): Zu kodierender Text.
+        output_path (str, optional): Zielpfad (.png oder .svg).
+        cellsize (int): Modulgröße in Pixeln.
+        
+    Returns:
+        np.ndarray | None: BGR-Bild als Numpy-Array oder None.
+    """
+    try:
+        from generate_datamatrix import generate_datamatrix as gen_dm
+        if output_path:
+            gen_dm(data, output_path, cellsize=cellsize)
+        
+        from pystrich.datamatrix import DataMatrixEncoder
+        encoder = DataMatrixEncoder(data)
+        pil_img = encoder.get_pilimage(cellsize=cellsize).convert("RGB")
+        return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+    except Exception as e:
+        logger.debug(f"Fehler bei _generate_datamatrix_image: {e}")
+        return None
 
 
 def _load_ocr():
@@ -2082,6 +2263,14 @@ def _read_datamatrix(frame: np.ndarray) -> str | None:
             logger.info(f"DataMatrix gefunden (zxing-cpp Fast-Path): {zxing_result}")
             return zxing_result
 
+        # MicroUNet KI-Binarisierer versuchen (speziell für geätzte/verblassende Codes)
+        unet_img = _preprocess_unet_binarize(gray)
+        if unet_img is not None:
+            zxing_result = _try_zxing_dmtx(unet_img)
+            if zxing_result is not None:
+                logger.info(f"DataMatrix gefunden (zxing-cpp + MicroUNet Binarisierer): {zxing_result}")
+                return zxing_result
+
         # zxing-cpp mit Kontrastverstärkung & Top-Hat Entspiegelung versuchen
         for clip_limit in [4.0, 10.0]:
             clahe_zx = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
@@ -2401,7 +2590,6 @@ def _read_ocr_with_status(frame: np.ndarray) -> dict:
     }
 
     try:
-        reader = _load_ocr()
         h_frame, w_frame = frame.shape[:2]
         # Untere 65% des Bildes scannen (Klarschrift liegt typischerweise unten)
         ocr_zone = frame[int(h_frame * 0.35):, :]
@@ -2414,6 +2602,23 @@ def _read_ocr_with_status(frame: np.ndarray) -> dict:
             ocr_scale = 800.0 / ocr_w
             ocr_zone = cv2.resize(ocr_zone, (0, 0), fx=ocr_scale, fy=ocr_scale, interpolation=cv2.INTER_AREA)
             logger.debug(f"OCR-Zone herunterskaliert: {ocr_w}x{ocr_h} → {ocr_zone.shape[1]}x{ocr_zone.shape[0]}")
+        
+        # ===== STUFE 0: PACC Neural Char-Classifier Fast-Path (< 3ms) =====
+        pacc_code, pacc_conf = _predict_pacc(ocr_zone)
+        if pacc_code is not None and pacc_conf >= 0.70:
+            logger.info(f"PACC Fast-Path OCR erfolgreich: '{pacc_code}' (Konfidenz: {pacc_conf:.2f})")
+            return {
+                "status": "ok",
+                "text": pacc_code,
+                "partial_display": pacc_code,
+                "readable_chars": pacc_code,
+                "confidence": pacc_conf,
+                "readable_count": 4,
+                "missing_positions": [],
+                "raw_candidate": pacc_code,
+            }
+        
+        reader = _load_ocr()
         
         # Primäre Preprocessing-Varianten erzeugen (Fast-Mode: nur 2 statt 5)
         variants = _preprocess_ocr_variants(ocr_zone.copy(), fast_mode=True)
@@ -2911,6 +3116,260 @@ def _reconstruct_from_inner(inner_8x8: np.ndarray) -> str | None:
     return None
 
 
+# =============================================================================
+# Pipeline 3: Referenzbild-Abgleich (Hamming-Distanz gegen generated_codes)
+# =============================================================================
+
+def _get_ref_img_dir() -> str:
+    """
+    Ermittelt den Pfad zum Ordner 'generated_codes' relativ zum Skript-/EXE-Verzeichnis.
+    """
+    global _REF_IMG_DIR
+    if _REF_IMG_DIR is None:
+        if getattr(sys, 'frozen', False):
+            base = os.path.dirname(sys.executable)
+        else:
+            base = os.path.dirname(os.path.abspath(__file__))
+        _REF_IMG_DIR = os.path.join(base, 'generated_codes')
+    return _REF_IMG_DIR
+
+
+def _load_reference_images() -> tuple[list[str], np.ndarray]:
+    """
+    Lazy-Loading: Liest alle PNG-Referenzbilder aus 'generated_codes/' und
+    speichert sie als binarisierte, flattened Vektoren in einer NumPy-Matrix.
+    
+    Returns:
+        tuple[list[str], np.ndarray]: (Liste der Code-Namen, Matrix (N, 10000) uint8)
+    """
+    global _REF_IMG_MATRIX, _REF_IMG_CODES
+    if _REF_IMG_MATRIX is not None:
+        return _REF_IMG_CODES, _REF_IMG_MATRIX
+
+    ref_dir = _get_ref_img_dir()
+    if not os.path.isdir(ref_dir):
+        logger.warning(f"Referenzbild-Ordner '{ref_dir}' nicht gefunden. Pipeline 3 deaktiviert.")
+        _REF_IMG_CODES = []
+        _REF_IMG_MATRIX = np.empty((0, _REF_IMG_SIZE[0] * _REF_IMG_SIZE[1]), dtype=np.uint8)
+        return _REF_IMG_CODES, _REF_IMG_MATRIX
+
+    t0 = time.time()
+    codes = []
+    rows = []
+    norm_w, norm_h = _REF_IMG_SIZE
+
+    # Sortierte Liste aller PNG-Dateien
+    png_files = sorted([f for f in os.listdir(ref_dir) if f.lower().endswith('.png')])
+
+    for fname in png_files:
+        code = os.path.splitext(fname)[0]  # z.B. "W002"
+        fpath = os.path.join(ref_dir, fname)
+        img = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            continue
+        # Auf Normgröße skalieren
+        resized = cv2.resize(img, (norm_w, norm_h), interpolation=cv2.INTER_AREA)
+        # Otsu-Binarisierung (0 oder 255 → 0 oder 1)
+        _, binary = cv2.threshold(resized, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        binary_01 = (binary // 255).astype(np.uint8)  # 0=schwarz, 1=weiß
+        rows.append(binary_01.flatten())
+        codes.append(code)
+
+    if rows:
+        _REF_IMG_MATRIX = np.array(rows, dtype=np.uint8)
+    else:
+        _REF_IMG_MATRIX = np.empty((0, norm_w * norm_h), dtype=np.uint8)
+    _REF_IMG_CODES = codes
+
+    dt = time.time() - t0
+    logger.info(
+        f"Pipeline 3: {len(codes)} Referenzbilder aus '{ref_dir}' geladen "
+        f"(Matrix: {_REF_IMG_MATRIX.shape}, {dt:.2f}s)"
+    )
+    return _REF_IMG_CODES, _REF_IMG_MATRIX
+
+
+def _extract_dmx_region(frame: np.ndarray) -> list[np.ndarray]:
+    """
+    Extrahiert den quadratischen DataMatrix-Bereich aus dem Kamerabild.
+    Sucht nach dem größten annähernd quadratischen Konturobjekt und liefert
+    alle 4 Rotationsvarianten zurück (da die Ecksortierung nicht eindeutig ist).
+    Falls keine Kontur gefunden wird, wird das gesamte Bild als Fallback skaliert.
+    
+    Returns:
+        list[np.ndarray]: Liste von binarisierten 100×100-Varianten (0/1), oder leere Liste.
+    """
+    if len(frame.shape) == 3:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = frame.copy()
+
+    h, w = gray.shape[:2]
+    norm_w, norm_h = _REF_IMG_SIZE
+    variants = []
+
+    # Binarisieren und Konturen finden
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    inv = cv2.bitwise_not(binary)
+
+    # Morphologisches Closing für fragmentierte DMX-Module
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    closed = cv2.morphologyEx(inv, cv2.MORPH_CLOSE, kernel, iterations=2)
+    contours, _ = cv2.findContours(closed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+    best_contour = None
+    best_area = 0
+
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area < 400 or area > (h * w) * 0.70:
+            continue
+
+        rect = cv2.minAreaRect(c)
+        rect_w, rect_h = rect[1]
+        if rect_w == 0 or rect_h == 0:
+            continue
+        aspect = max(rect_w, rect_h) / min(rect_w, rect_h)
+        if aspect > 1.6:
+            continue
+
+        if area > best_area:
+            best_area = area
+            best_contour = c
+
+    if best_contour is not None:
+        rect = cv2.minAreaRect(best_contour)
+        box = cv2.boxPoints(rect)
+        box = np.float32(box)
+        # Sortiere Punkte nach Winkel
+        center = box.mean(axis=0)
+        angles = np.arctan2(box[:, 1] - center[1], box[:, 0] - center[0])
+        sorted_idx = np.argsort(angles)
+        sorted_box = box[sorted_idx]
+
+        dst = np.float32([[0, 0], [norm_w, 0], [norm_w, norm_h], [0, norm_h]])
+        M = cv2.getPerspectiveTransform(sorted_box, dst)
+        warped = cv2.warpPerspective(gray, M, (norm_w, norm_h))
+        _, warped_bin = cv2.threshold(warped, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        base = (warped_bin // 255).astype(np.uint8)
+
+        # Alle 4 Rotationsvarianten erzeugen (0°, 90°, 180°, 270°)
+        for k in range(4):
+            rotated = np.rot90(base, k)
+            variants.append(rotated)
+
+    # Fallback: Gesamtes Bild skalieren (z.B. wenn Bild bereits ein sauberer DMX-Ausschnitt ist)
+    resized = cv2.resize(gray, (norm_w, norm_h), interpolation=cv2.INTER_AREA)
+    _, resized_bin = cv2.threshold(resized, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    fallback = (resized_bin // 255).astype(np.uint8)
+    # Auch hier alle 4 Rotationen
+    for k in range(4):
+        rotated = np.rot90(fallback, k)
+        variants.append(rotated)
+
+    return variants
+
+
+def _scan_reference_image_pipeline(frame: np.ndarray) -> dict:
+    """
+    Pipeline 3: Vergleicht den DataMatrix-Bereich im Kamerabild
+    gegen alle vorgenerierten Referenzbilder per vektorisierter Hamming-Distanz.
+    Testet automatisch alle Rotationsvarianten und wählt den besten Match.
+    
+    Optimierung: np.packbits komprimiert 10.000 Pixel → 1.250 Bytes pro Vektor,
+    XOR + popcount auf gepackten Bits → 8× schneller als naive Variante.
+    
+    Args:
+        frame (np.ndarray): Das Graustufen- oder Farbbild.
+        
+    Returns:
+        dict: Pipeline-Ergebnis mit status, text, confidence, method_detail.
+    """
+    blocked_result = {
+        "status": "blocked",
+        "text": None,
+        "confidence": 0.0,
+        "method_detail": "RefImg: nicht erkannt",
+    }
+
+    try:
+        codes, ref_matrix = _load_reference_images()
+        if len(codes) == 0:
+            return blocked_result
+
+        # DMX-Region aus dem Kamerabild extrahieren (alle Rotationsvarianten)
+        variants = _extract_dmx_region(frame)
+        if not variants:
+            logger.debug("Pipeline 3: Keine DMX-Region im Bild gefunden.")
+            return blocked_result
+
+        n_pixels = _REF_IMG_SIZE[0] * _REF_IMG_SIZE[1]
+
+        # Referenz-Matrix einmalig packen (gecacht nach erstem Aufruf)
+        global _REF_IMG_PACKED
+        if '_REF_IMG_PACKED' not in globals() or _REF_IMG_PACKED is None:
+            _REF_IMG_PACKED = np.packbits(ref_matrix, axis=1)  # (26000, 1250)
+
+        # Alle Varianten in eine Matrix stapeln und packen
+        variant_matrix = np.array([v.flatten() for v in variants], dtype=np.uint8)  # (V, 10000)
+        variant_packed = np.packbits(variant_matrix, axis=1)  # (V, 1250)
+
+        # Popcount-Lookup-Table (256 Einträge)
+        _popcount_lut = np.array([bin(i).count('1') for i in range(256)], dtype=np.int32)
+
+        # Batch-XOR: Für jede Variante gegen alle Referenzen
+        overall_best_score = -1.0
+        overall_best_code = None
+        overall_second_score = 0.0
+        overall_second_code = None
+
+        for i in range(len(variant_packed)):
+            # XOR: (N, 1250) — eine Variante gegen alle Referenzen
+            xor_packed = np.bitwise_xor(_REF_IMG_PACKED, variant_packed[i])  # (N, 1250)
+            # Popcount per Byte via LUT, dann Summe → Hamming-Distanz
+            hamming = np.sum(_popcount_lut[xor_packed], axis=1)  # (N,)
+            scores = 1.0 - (hamming.astype(np.float32) / n_pixels)
+
+            # Top-2 für Score + Margin
+            top2_idx = np.argpartition(scores, -2)[-2:]
+            top2_sorted = top2_idx[np.argsort(scores[top2_idx])[::-1]]
+            best_idx = top2_sorted[0]
+            second_idx = top2_sorted[1] if len(top2_sorted) > 1 else best_idx
+
+            if float(scores[best_idx]) > overall_best_score:
+                overall_best_score = float(scores[best_idx])
+                overall_best_code = codes[best_idx]
+                overall_second_score = float(scores[second_idx])
+                overall_second_code = codes[second_idx]
+
+            # Early-Termination: Bei Score >= 0.95 sofort aufhören
+            if overall_best_score >= 0.95:
+                break
+
+        margin = overall_best_score - overall_second_score
+
+        logger.info(
+            f"Pipeline 3 RefImg: Bester='{overall_best_code}' Score={overall_best_score:.3f}, "
+            f"Zweiter='{overall_second_code}' Score={overall_second_score:.3f}, "
+            f"Margin={margin:.3f}"
+        )
+
+        # Mindest-Score und Mindest-Margin für Akzeptanz
+        if overall_best_score >= 0.70 and margin >= 0.02:
+            return {
+                "status": "matched",
+                "text": overall_best_code,
+                "confidence": min(1.0, max(0.60, overall_best_score)),
+                "method_detail": f"RefImg Hamming-Match (Score={overall_best_score:.3f}, Margin={margin:.3f})",
+            }
+
+        return blocked_result
+
+    except Exception as e:
+        logger.warning(f"Pipeline 3 RefImg Fehler: {e}")
+        return blocked_result
+
+
 def _scan_datamatrix_pipeline(frame: np.ndarray) -> dict:
     """
     Führt die DataMatrix-Erkennungs- und Rekonstruktions-Pipeline aus.
@@ -3059,14 +3518,16 @@ def _compute_joint_bayes_confidence(ocr_code: str | None, ocr_conf: float,
         return ocr_code, float(l_ocr), "Bayes-Fusion (OCR)"
 
 
-def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray) -> dict:
+def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray,
+                   ref_img_result: dict = None) -> dict:
     """
-    Führt die Ergebnisse von OCR und DataMatrix zusammen.
+    Führt die Ergebnisse von OCR, DataMatrix und Referenzbild-Pipeline zusammen.
     
     Args:
         ocr_result (dict): Das OCR-Ergebnis.
         dmx_result (dict): Das DataMatrix-Ergebnis.
         frame (np.ndarray): Das Graustufenbild (für Rekonstruktion).
+        ref_img_result (dict): Das Referenzbild-Pipeline-Ergebnis (Pipeline 3).
         
     Returns:
         dict: Das endgültige verifizierte oder rekonstruierte Scan-Ergebnis.
@@ -3084,9 +3545,19 @@ def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray) -> dic
     dmx_text = dmx_result.get("text")
     dmx_conf = dmx_result.get("confidence", 0.0)
 
+    # Pipeline 3: Referenzbild-Ergebnis extrahieren
+    ref_text = None
+    ref_conf = 0.0
+    ref_status = "blocked"
+    if ref_img_result:
+        ref_text = ref_img_result.get("text")
+        ref_conf = ref_img_result.get("confidence", 0.0)
+        ref_status = ref_img_result.get("status", "blocked")
+
     logger.info(
         f"Merge: OCR={ocr_status}('{ocr_text or ocr_partial_display}') "
-        f"+ DMX={dmx_status}('{dmx_text}')"
+        f"+ DMX={dmx_status}('{dmx_text}') "
+        f"+ RefImg={ref_status}('{ref_text}')"
     )
 
     # DMX-Konsistenzprüfung für rekonstruierte Codes
@@ -3119,11 +3590,38 @@ def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray) -> dic
                 confidence = 1.0
                 is_verified = True
             else:
-                logger.warning(
-                    f"[WARN] ABWEICHUNG: DMX='{dmx_text}' vs OCR='{ocr_check_text}'. "
-                    f"Nutze DMX ({dmx_result['method_detail']})."
-                )
-                confidence = 0.9
+                # RefImg als Tie-Breaker bei DMX ≠ OCR Konflikt
+                if ref_text and ref_text == dmtx_norm:
+                    logger.info(
+                        f"[REFIMG-TIEBREAK] RefImg bestätigt DMX '{dmx_text}' gegen OCR '{ocr_check_text}'"
+                    )
+                    confidence = 0.98
+                elif ref_text and ref_text == ocr_norm:
+                    logger.info(
+                        f"[REFIMG-TIEBREAK] RefImg bestätigt OCR '{ocr_check_text}' gegen DMX '{dmx_text}'"
+                    )
+                    # OCR + RefImg überstimmen DMX-Rekonstruktion
+                    return {
+                        "success": True,
+                        "result": ocr_check_text,
+                        "method": "Verifiziert",
+                        "confidence": 0.98,
+                        "dmtx_result": dmx_text,
+                        "ocr_result": ocr_check_text,
+                        "verified": True,
+                        "ocr_partial_display": ocr_check_text,
+                    }
+                else:
+                    logger.warning(
+                        f"[WARN] ABWEICHUNG: DMX='{dmx_text}' vs OCR='{ocr_check_text}'. "
+                        f"Nutze DMX ({dmx_result['method_detail']})."
+                    )
+                    confidence = 0.9
+
+        # Dreifach-Verifikation: DMX + OCR + RefImg stimmen überein
+        if is_verified and ref_text and ref_text == dmx_text:
+            logger.info(f"[TRIPLE-MATCH] Alle 3 Pipelines bestätigen: '{dmx_text}'")
+            confidence = 1.0
 
         ocr_display = ocr_text or ocr_partial_display
         if is_verified:
@@ -3408,8 +3906,25 @@ def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray) -> dic
         recon_result["ocr_result"] = recon_result["result"]
         return recon_result
 
+    # 4b. Fall: Pipeline 3 (RefImg) als letzte Rettung, wenn DMX + OCR komplett fehlgeschlagen
+    if ref_text and ref_status == "matched" and ref_conf >= 0.75:
+        logger.info(
+            f"[REFIMG-RESCUE] DMX + OCR fehlgeschlagen, RefImg liefert '{ref_text}' "
+            f"(Conf={ref_conf:.2f})"
+        )
+        return {
+            "success": True,
+            "result": ref_text,
+            "method": "RefImg",
+            "confidence": min(0.90, ref_conf),
+            "dmtx_result": None,
+            "ocr_result": None,
+            "verified": False,
+            "ocr_partial_display": ref_text,
+        }
+
     # 5. Fall: Keine Erkennung möglich
-    logger.warning("Weder DataMatrix noch OCR konnten etwas lesen.")
+    logger.warning("Weder DataMatrix noch OCR noch RefImg konnten etwas lesen.")
     return {
         "success": False,
         "result": "Kein Code erkannt.",
@@ -3424,8 +3939,9 @@ def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray) -> dic
 
 def scan(frame: np.ndarray) -> dict:
     """
-    Haupt-Scan-Funktion mit Dual-Validation (v4.0).
-    Führt OCR- und DataMatrix-Erkennung parallel in Threads aus und kombiniert die Ergebnisse.
+    Haupt-Scan-Funktion mit Triple-Validation (v5.0).
+    Führt OCR-, DataMatrix- und Referenzbild-Erkennung parallel in Threads aus
+    und kombiniert die Ergebnisse per Dreifach-Fusion.
     
     Args:
         frame (np.ndarray): Das Graustufen- oder Farbbild der Kamera.
@@ -3442,7 +3958,7 @@ def scan(frame: np.ndarray) -> dict:
         }
 
     h, w = frame.shape[:2]
-    logger.info(f"Dual-Validation Scan v4.0 gestartet auf Bild mit {w}x{h} Pixeln.")
+    logger.info(f"Triple-Validation Scan v5.0 gestartet auf Bild mit {w}x{h} Pixeln.")
 
     # Fast-Path: Schneller DataMatrix-Versuch (< 15ms)
     fast_dmx = _scan_datamatrix_pipeline(frame)
@@ -3458,34 +3974,55 @@ def scan(frame: np.ndarray) -> dict:
             "ocr_result": code,
             "verified": True,
             "ocr_partial_display": code,
-            "_internal_timing": {"ocr_ms": 0, "dmtx_ms": 5},
+            "_internal_timing": {"ocr_ms": 0, "dmtx_ms": 5, "refimg_ms": 0},
         }
 
     ocr_result = None
+    ref_img_result = None
     dmx_result = fast_dmx
 
-    # --- Timing: OCR und DMTX separat messen ---
+    # --- Timing: OCR, DMTX und RefImg separat messen ---
     _t_ocr_start = time.time()
     _t_dmx_start = time.time()
+    _t_refimg_start = time.time()
     _t_ocr_end = _t_ocr_start
     _t_dmx_end = _t_dmx_start
+    _t_refimg_end = _t_refimg_start
 
-    def _timed_ocr(frm):
-        return _read_ocr_with_status(frm)
+    # OCR und RefImg parallel ausführen (DMX wurde bereits über fast_dmx ermittelt)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        # OCR-Thread starten
+        _t_ocr_start = time.time()
+        future_ocr = executor.submit(_read_ocr_with_status, frame)
 
-    # OCR ausführen (DMX wurde bereits über fast_dmx ermittelt)
-    _t_ocr_start = time.time()
-    try:
-        ocr_result = _read_ocr_with_status(frame)
-        _t_ocr_end = time.time()
-    except Exception as e:
-        _t_ocr_end = time.time()
-        logger.warning(f"OCR Fehler: {e}")
-        ocr_result = {
-            "status": "failed", "text": None, "partial_display": None,
-            "readable_chars": None, "confidence": 0.0,
-            "readable_count": 0, "missing_positions": [],
-        }
+        # RefImg-Thread starten (Pipeline 3)
+        _t_refimg_start = time.time()
+        future_refimg = executor.submit(_scan_reference_image_pipeline, frame)
+
+        # OCR-Ergebnis abholen
+        try:
+            ocr_result = future_ocr.result()
+            _t_ocr_end = time.time()
+        except Exception as e:
+            _t_ocr_end = time.time()
+            logger.warning(f"OCR Fehler: {e}")
+            ocr_result = {
+                "status": "failed", "text": None, "partial_display": None,
+                "readable_chars": None, "confidence": 0.0,
+                "readable_count": 0, "missing_positions": [],
+            }
+
+        # RefImg-Ergebnis abholen
+        try:
+            ref_img_result = future_refimg.result()
+            _t_refimg_end = time.time()
+        except Exception as e:
+            _t_refimg_end = time.time()
+            logger.warning(f"RefImg Pipeline Fehler: {e}")
+            ref_img_result = {
+                "status": "blocked", "text": None,
+                "confidence": 0.0, "method_detail": "RefImg Fehler",
+            }
 
     if dmx_result is None:
         dmx_result = {
@@ -3494,13 +4031,14 @@ def scan(frame: np.ndarray) -> dict:
             "observed_grid": None,
         }
 
-    # Ergebnisse mergen
-    result = _merge_results(ocr_result, dmx_result, frame)
+    # Ergebnisse mergen (Triple-Fusion)
+    result = _merge_results(ocr_result, dmx_result, frame, ref_img_result)
 
     # Internes Timing für den ScanLogger bereitstellen (nicht-brechend)
     result["_internal_timing"] = {
         "ocr_ms": int((_t_ocr_end - _t_ocr_start) * 1000),
         "dmtx_ms": int((_t_dmx_end - _t_dmx_start) * 1000),
+        "refimg_ms": int((_t_refimg_end - _t_refimg_start) * 1000),
     }
 
     logger.info(
