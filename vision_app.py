@@ -455,6 +455,7 @@ class AIVisionApp(ctk.CTk):
         self.stream_running = False
         self._stopping = False  # Guard gegen doppelten Stop
         self.model = None
+        self._is_2class = False
         self._model_lock = threading.Lock()  # Thread-Sperre für YOLO-Modell
         self.grabber: IDSFrameGrabber | None = None
         self._display_thread = None
@@ -940,10 +941,17 @@ class AIVisionApp(ctk.CTk):
                 else:
                     app_dir = os.path.dirname(os.path.abspath(__file__))
                 
-                model_path = os.path.join(app_dir, "runs", "detect", "training_runs", "horde_model", "weights", "best.pt")
-                if os.path.exists(model_path):
-                    self.model = YOLO(model_path)
-                    logger.info(f"YOLO Modell {model_path} geladen.")
+                model_path_2class = os.path.join(app_dir, "runs", "detect", "training_runs_v2", "horde_2class", "weights", "best.pt")
+                model_path_1class = os.path.join(app_dir, "runs", "detect", "training_runs", "horde_model", "weights", "best.pt")
+                
+                if os.path.exists(model_path_2class):
+                    self.model = YOLO(model_path_2class)
+                    self._is_2class = True
+                    logger.info(f"2-Klassen YOLO Modell geladen (datamatrix+text): {model_path_2class}")
+                elif os.path.exists(model_path_1class):
+                    self.model = YOLO(model_path_1class)
+                    self._is_2class = False
+                    logger.info(f"1-Klassen YOLO Modell geladen (Horde): {model_path_1class}")
                 else:
                     if getattr(sys, 'frozen', False):
                         base_model_path = os.path.join(sys._MEIPASS, "yolov10n.pt")
@@ -951,6 +959,7 @@ class AIVisionApp(ctk.CTk):
                         base_model_path = os.path.join(app_dir, "yolov10n.pt")
                     
                     self.model = YOLO(base_model_path)
+                    self._is_2class = False
                     logger.warning(f"Kein trainiertes Modell gefunden, nutze Standard {base_model_path}")
 
             # 2) Kamera-Stream verbinden
@@ -1046,10 +1055,15 @@ class AIVisionApp(ctk.CTk):
                 # Klasse und Konfidenz
                 conf = float(box.conf[0].cpu().item())
                 cls_id = int(box.cls[0].cpu().item())
-                cls_name = detections.names.get(cls_id, "Etikett")
+                cls_name = detections.names.get(cls_id, f"Klasse_{cls_id}")
                 
-                # BGR-Farbe für ACCENT (Blue: #2563EB -> RGB(37,99,235) -> BGR(235,99,37))
-                color_bgr = (235, 99, 37)
+                # Farbkodierung: Grün (BGR: 50, 205, 50) für DataMatrix (Klasse 0), Orange (BGR: 0, 165, 255) für Text (Klasse 1), Blau für 1-Klassen/Sonstiges
+                if self._is_2class and cls_id == 0:
+                    color_bgr = (50, 205, 50)  # Lime Green for DataMatrix
+                elif self._is_2class and cls_id == 1:
+                    color_bgr = (0, 165, 255)  # Orange for Text
+                else:
+                    color_bgr = (235, 99, 37)  # ACCENT Blue
                 
                 # Rahmen zeichnen
                 cv2.rectangle(out_frame, (x1, y1), (x2, y2), color_bgr, 2)
@@ -1269,25 +1283,45 @@ class AIVisionApp(ctk.CTk):
         detection_conf = 0.0
         detection_box = None
 
-        # KI-basiertes Zuschneiden (Cropping) vor dem Scannen
+        # KI-basiertes Zuschneiden (Cropping) / 2-Klassen Erkennung vor dem Scannen
         # Thread-Sperre verhindert gleichzeitige YOLO-Nutzung durch Display-Loop
+        yolo_detections = []
+        use_2class = False
         if self.model is not None:
             with self._model_lock:
                 results = self.model.predict(scan_snapshot, conf=0.15, verbose=False)
-            boxes = results[0].boxes
-            if len(boxes) > 0:
-                # Nimm die Box mit der höchsten Konfidenz
-                best_box = boxes[0]
-                detection_conf = float(best_box.conf[0])
-                x1, y1, x2, y2 = map(int, best_box.xyxy[0])
-                detection_box = (x1, y1, x2, y2)
-                # Mit Begradigung (Deskewing) ausschneiden
-                scan_frame = scanner.deskew_crop(scan_snapshot, detection_box, padding=60)
-                logger.info(f"KI hat Etikett gefunden! Konfidenz: {detection_conf:.2f}. Ausschneiden und Begradigen auf {scan_frame.shape[1]}x{scan_frame.shape[0]}.")
+            if results and len(results[0].boxes) > 0:
+                for box in results[0].boxes:
+                    cls_id = int(box.cls[0])
+                    conf = float(box.conf[0])
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    if conf > 0.3:
+                        yolo_detections.append({
+                            "cls": cls_id,
+                            "box": (x1, y1, x2, y2),
+                            "conf": conf,
+                        })
+
+                detected_classes = set(d["cls"] for d in yolo_detections)
+                if self._is_2class and (0 in detected_classes or 1 in detected_classes):
+                    use_2class = True
+                    detection_conf = max(d["conf"] for d in yolo_detections) if yolo_detections else 0.0
+                    logger.info(f"2-Klassen-Modus: {len(yolo_detections)} Detections (Klassen: {detected_classes}, max Conf: {detection_conf:.2f})")
+                elif yolo_detections:
+                    best_det = max(yolo_detections, key=lambda d: d["conf"])
+                    detection_conf = best_det["conf"]
+                    detection_box = best_det["box"]
+                    scan_frame = scanner.deskew_crop(scan_snapshot, detection_box, padding=60)
+                    logger.info(f"1-Klassen KI Etikett gefunden! Konfidenz: {detection_conf:.2f}. Ausschneiden und Begradigen auf {scan_frame.shape[1]}x{scan_frame.shape[0]}.")
+                else:
+                    logger.warning("KI hat kein Etikett gefunden, scanne gesamtes Bild.")
             else:
                 logger.warning("KI hat kein Etikett gefunden, scanne gesamtes Bild.")
 
-        result = scanner.scan(scan_frame)
+        if use_2class:
+            result = scanner.scan_2class(scan_snapshot, yolo_detections)
+        else:
+            result = scanner.scan(scan_frame)
         duration_ms = int((time.time() - start_time) * 1000)
         result["duration_ms"] = duration_ms
         logger.info(f"Scan Ergebnis: {result} (Dauer: {duration_ms}ms)")
