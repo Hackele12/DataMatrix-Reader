@@ -7,17 +7,14 @@ echo  DataDetector v18 - Installation der Abhängigkeiten
 echo ============================================================
 echo.
 
-:: Prüfen auf temporäre/übermäßig lange Pfade (Schutz vor WinError 206)
+:: Prüfen auf temporäre oder zu lange Pfade
 echo %~dp0 | findstr /i "AppData\Local\Temp" >nul 2>&1
 if %errorlevel% equ 0 (
     echo [HINWEIS] Das Programm wird aus einem temporaeren Pfad ausgefuehrt.
-    echo Um Windows-Pfadlaengen-Fehler (WinError 206) bei Bibliotheken zu vermeiden,
-    echo wird empfohlen, den Ordner nach "C:\DataDetector" zu verschieben.
+    echo Um Windows-Pfadlaengen-Fehler zu vermeiden, wird empfohlen,
+    echo den Ordner nach C:\DataDetector zu verschieben.
     echo.
 )
-
-:: Versuche Windows Long Paths in der Registry zu aktivieren
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f >nul 2>&1
 
 :: Prüfen, ob Python oder py im Pfad ist
 set "PYTHON_CMD="
@@ -71,8 +68,8 @@ if %errorlevel% neq 0 (
     echo.
     echo [FEHLER] Installation der Bibliotheken fehlgeschlagen!
     echo.
-    echo TIPP bei "WinError 206" (Pfad zu lang):
-    echo Verschiebe/Entpacke das Projekt in ein kurzes Verzeichnis (z.B. C:\DataDetector)
+    echo TIPP bei Pfadlaengen-Fehler - WinError 206:
+    echo Verschiebe/Entpacke das Projekt in ein kurzes Verzeichnis - z.B. C:\DataDetector
     echo und starte setup.bat erneut.
     echo.
     pause
