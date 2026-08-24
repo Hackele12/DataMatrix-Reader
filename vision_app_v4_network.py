@@ -314,13 +314,14 @@ class IDSFrameGrabber:
 
 class CameraService:
     """Service für eine einzelne Kamera inklusive KI-Auswertung und TCP-Server."""
-    def __init__(self, cam_cfg: dict, shared_yolo_model, master_log_dir: str = r"U:\Temp\DataMatrixReader.logFiles"):
+    def __init__(self, cam_cfg: dict, shared_yolo_model, master_log_dir: str = r"U:\Temp\DataMatrixReader.logFiles", is_2class: bool = False):
         self.cfg = cam_cfg
         self.cam_id = cam_cfg.get("id", "cam")
         self.cam_name = cam_cfg.get("name", self.cam_id)
         self.ip = cam_cfg.get("camera_ip", "")
         self.port = int(cam_cfg.get("port", 9500))
         self.model = shared_yolo_model
+        self._is_2class = is_2class
         self.grabber = None
         self._scan_counter = 0
 
@@ -364,24 +365,58 @@ class CameraService:
         crop_size = None
 
         t_yolo_start = time.time()
+        yolo_detections = []  # Für 2-Klassen-Modus
+        use_2class = False
         try:
             if self.model:
                 results = self.model(scan_snapshot, verbose=False)
                 if results and len(results[0].boxes) > 0:
-                    best_box = max(results[0].boxes, key=lambda b: float(b.conf[0]))
-                    detection_conf = float(best_box.conf[0])
-                    x1, y1, x2, y2 = map(int, best_box.xyxy[0])
-                    detection_box = (x1, y1, x2, y2)
-                    label_detected = True
-                    scan_frame = scanner.deskew_crop(scan_snapshot, detection_box, padding=60)
-                    crop_size = [scan_frame.shape[1], scan_frame.shape[0]]
-                    logger.info(f"[{self.cam_name}] KI Etikett gefunden (Konfidenz: {detection_conf:.2f}). Crop: {crop_size[0]}x{crop_size[1]}.")
+                    # Alle Detections sammeln (mit Klasse, Box, Konfidenz)
+                    for box in results[0].boxes:
+                        cls_id = int(box.cls[0])
+                        conf = float(box.conf[0])
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        if conf > 0.3:  # Mindest-Konfidenz
+                            yolo_detections.append({
+                                "cls": cls_id,
+                                "box": (x1, y1, x2, y2),
+                                "conf": conf,
+                            })
+
+                    # Prüfe ob 2-Klassen-Modell aktiv ist (Klassen 0 und 1 vorhanden)
+                    detected_classes = set(d["cls"] for d in yolo_detections)
+                    if self._is_2class and (0 in detected_classes or 1 in detected_classes):
+                        use_2class = True
+                        label_detected = True
+                        # Höchste Konfidenz als detection_conf
+                        detection_conf = max(d["conf"] for d in yolo_detections) if yolo_detections else 0.0
+                        logger.info(
+                            f"[{self.cam_name}] 2-Klassen-Modus: {len(yolo_detections)} Detections "
+                            f"(Klassen: {detected_classes}, max Conf: {detection_conf:.2f})"
+                        )
+                    elif yolo_detections:
+                        # Fallback: 1-Klassen-Modus (beste Box wie bisher)
+                        best_det = max(yolo_detections, key=lambda d: d["conf"])
+                        detection_conf = best_det["conf"]
+                        detection_box = best_det["box"]
+                        label_detected = True
+                        scan_frame = scanner.deskew_crop(scan_snapshot, detection_box, padding=60)
+                        crop_size = [scan_frame.shape[1], scan_frame.shape[0]]
+                        logger.info(
+                            f"[{self.cam_name}] KI Etikett gefunden (Konfidenz: {detection_conf:.2f}). "
+                            f"Crop: {crop_size[0]}x{crop_size[1]}."
+                        )
         except Exception as e:
             logger.error(f"[{self.cam_name}] Fehler bei KI-Auswertung: {e}")
         t_yolo_ms = int((time.time() - t_yolo_start) * 1000)
 
         t_scan_start = time.time()
-        result = scanner.scan(scan_frame)
+        if use_2class:
+            # 2-Klassen-Pipeline: Getrennte DataMatrix + Text Auswertung
+            result = scanner.scan_2class(scan_snapshot, yolo_detections)
+        else:
+            # Fallback: Bisherige 1-Klassen-Pipeline
+            result = scanner.scan(scan_frame)
         t_scan_ms = int((time.time() - t_scan_start) * 1000)
         duration_ms = int((time.time() - start_time) * 1000)
         result["duration_ms"] = duration_ms
@@ -394,7 +429,13 @@ class CameraService:
                 scan_result=result,
                 frame=scan_snapshot,
                 timing={"total_ms": duration_ms, "yolo_ms": t_yolo_ms, "scan_ms": t_scan_ms},
-                detection_info={"yolo_conf": detection_conf, "crop_size": crop_size, "label_detected": label_detected},
+                detection_info={
+                    "yolo_conf": detection_conf,
+                    "crop_size": crop_size,
+                    "label_detected": label_detected,
+                    "2class_mode": use_2class,
+                    "detection_count": len(yolo_detections),
+                },
                 meta={
                     "camera_model": self.grabber.model_name if self.grabber else "",
                     "camera_serial": self.grabber.serial if self.grabber else "",
@@ -470,15 +511,23 @@ def main():
         except Exception as e:
             logger.error(f"IDS SDK Initialisierung fehlgeschlagen: {e}")
 
-    # 2) YOLO Modell EINMALIG im Hauptthread laden
+    # 2) YOLO Modell EINMALIG im Hauptthread laden (bevorzugt 2-Klassen-Modell)
     shared_yolo_model = None
+    _is_2class_model = False
     try:
         from ultralytics import YOLO as _YOLO
         app_dir = os.path.dirname(os.path.abspath(__file__))
-        model_path = os.path.join(app_dir, "runs", "detect", "training_runs", "horde_model", "weights", "best.pt")
-        if os.path.exists(model_path):
-            shared_yolo_model = _YOLO(model_path)
-            logger.info(f"Trained YOLO Modell geladen: {model_path}")
+        # Bevorzugt: 2-Klassen-Modell (datamatrix + text)
+        model_path_2class = os.path.join(app_dir, "runs", "detect", "training_runs_v2", "horde_2class", "weights", "best.pt")
+        # Fallback: 1-Klassen-Modell (Horde)
+        model_path_1class = os.path.join(app_dir, "runs", "detect", "training_runs", "horde_model", "weights", "best.pt")
+        if os.path.exists(model_path_2class):
+            shared_yolo_model = _YOLO(model_path_2class)
+            _is_2class_model = True
+            logger.info(f"2-Klassen YOLO Modell geladen (datamatrix+text): {model_path_2class}")
+        elif os.path.exists(model_path_1class):
+            shared_yolo_model = _YOLO(model_path_1class)
+            logger.info(f"1-Klassen YOLO Modell geladen (Horde): {model_path_1class}")
         else:
             base_path = os.path.join(app_dir, "yolov10n.pt")
             shared_yolo_model = _YOLO(base_path)
@@ -491,7 +540,7 @@ def main():
     server_threads = []
 
     for cam_cfg in cams_cfg:
-        srv = CameraService(cam_cfg, shared_yolo_model, master_log_dir=master_log_dir)
+        srv = CameraService(cam_cfg, shared_yolo_model, master_log_dir=master_log_dir, is_2class=_is_2class_model)
         if srv.start_camera():
             services.append(srv)
             t = threading.Thread(target=srv.run_tcp_server, daemon=True)

@@ -3937,6 +3937,259 @@ def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray,
     }
 
 
+def scan_datamatrix(frame: np.ndarray) -> dict:
+    """
+    Reine DataMatrix-Auswertung auf einem bereits zugeschnittenen DataMatrix-Crop.
+    Führt nur DataMatrix-Pipelines aus (zxing, pylibdmtx, Rekonstruktion, RefImg).
+    Kein OCR — spart ~200ms pro Scan.
+    
+    Args:
+        frame (np.ndarray): Der zugeschnittene DataMatrix-Bereich (deskew'd).
+        
+    Returns:
+        dict: Ergebnis mit keys: status, text, confidence, method_detail, observed_grid.
+    """
+    if frame is None or frame.size == 0:
+        return {
+            "status": "blocked", "text": None,
+            "confidence": 0.0, "method_detail": "Kein Bild",
+            "observed_grid": None,
+        }
+
+    t0 = time.time()
+
+    # 1. Fast-Path: zxing-cpp direkt auf dem Crop
+    dmx_result = _scan_datamatrix_pipeline(frame)
+    if dmx_result and dmx_result.get("status") == "decoded" and dmx_result.get("text"):
+        code = dmx_result["text"]
+        if _is_valid_horden_code(code):
+            logger.info(f"[2CLASS-DMX] DataMatrix direkt erkannt: '{code}' ({int((time.time()-t0)*1000)}ms)")
+            dmx_result["confidence"] = 1.0
+            return dmx_result
+
+    # 2. Referenzbild-Pipeline (Pipeline 3)
+    ref_result = _scan_reference_image_pipeline(frame)
+    if ref_result and ref_result.get("status") == "matched" and ref_result.get("text"):
+        ref_text = ref_result["text"]
+        ref_conf = ref_result.get("confidence", 0.0)
+        if ref_conf >= 0.75 and _is_valid_horden_code(ref_text):
+            logger.info(f"[2CLASS-DMX] RefImg Match: '{ref_text}' (Conf={ref_conf:.2f}, {int((time.time()-t0)*1000)}ms)")
+            # Wenn DMX auch ein Ergebnis hat, bevorzuge DMX
+            if dmx_result and dmx_result.get("text"):
+                dmx_result["_ref_img_text"] = ref_text
+                dmx_result["_ref_img_conf"] = ref_conf
+                return dmx_result
+            return {
+                "status": "matched_refimg", "text": ref_text,
+                "confidence": ref_conf, "method_detail": "RefImg",
+                "observed_grid": None,
+            }
+
+    # 3. Rekonstruktions-Versuch (ohne OCR-Hinweis)
+    recon_result = _try_reconstruct(frame, None, 0.0, None)
+    if recon_result is not None and recon_result.get("success"):
+        logger.info(f"[2CLASS-DMX] Rekonstruktion: '{recon_result['result']}' ({int((time.time()-t0)*1000)}ms)")
+        return {
+            "status": "reconstructed", "text": recon_result["result"],
+            "confidence": recon_result.get("confidence", 0.85),
+            "method_detail": recon_result.get("method", "Rekonstruiert"),
+            "observed_grid": None,
+        }
+
+    # 4. Kein Ergebnis
+    logger.info(f"[2CLASS-DMX] Keine DataMatrix erkannt ({int((time.time()-t0)*1000)}ms)")
+    return dmx_result if dmx_result else {
+        "status": "blocked", "text": None,
+        "confidence": 0.0, "method_detail": "Kein DMX erkannt",
+        "observed_grid": None,
+    }
+
+
+def scan_ocr(frame: np.ndarray) -> dict:
+    """
+    Reine OCR-Auswertung auf einem bereits zugeschnittenen Text-Crop.
+    Führt nur OCR-Pipelines aus (EasyOCR, PACC Char-Classifier).
+    Keine DataMatrix-Verarbeitung.
+    
+    Args:
+        frame (np.ndarray): Der zugeschnittene Text-Bereich (deskew'd).
+        
+    Returns:
+        dict: Ergebnis mit keys: status, text, confidence, partial_display,
+              readable_chars, missing_positions, raw_candidate.
+    """
+    if frame is None or frame.size == 0:
+        return {
+            "status": "failed", "text": None, "confidence": 0.0,
+            "partial_display": None, "readable_chars": None,
+            "missing_positions": [], "raw_candidate": None,
+        }
+
+    t0 = time.time()
+
+    # 1. EasyOCR-basierte Erkennung mit Status
+    ocr_result = _read_ocr_with_status(frame)
+    ocr_text = ocr_result.get("text")
+    ocr_conf = ocr_result.get("confidence", 0.0)
+
+    # 2. PACC Char-Classifier als Ergänzung/Verifikation
+    pacc_text, pacc_conf = _predict_pacc(frame)
+    if pacc_text and pacc_conf > 0.0:
+        logger.info(f"[2CLASS-OCR] PACC: '{pacc_text}' (Conf={pacc_conf:.2f})")
+        # PACC als Fallback wenn EasyOCR nichts findet
+        if not ocr_text and pacc_conf >= 0.70:
+            ocr_result["text"] = pacc_text
+            ocr_result["confidence"] = pacc_conf
+            ocr_result["status"] = "ok"
+            ocr_result["partial_display"] = pacc_text
+        # PACC als Verifikation wenn beide übereinstimmen
+        elif ocr_text and pacc_text == ocr_text:
+            ocr_result["confidence"] = max(ocr_conf, pacc_conf)
+
+    logger.info(
+        f"[2CLASS-OCR] Ergebnis: status={ocr_result.get('status')}, "
+        f"text='{ocr_result.get('text')}', conf={ocr_result.get('confidence', 0.0):.2f} "
+        f"({int((time.time()-t0)*1000)}ms)"
+    )
+    return ocr_result
+
+
+def scan_2class(frame: np.ndarray, detections: list[dict]) -> dict:
+    """
+    Orchestrierungs-Funktion für die 2-Klassen-Pipeline.
+    
+    Empfängt das Rohbild und eine Liste von YOLO-Detections, sortiert nach Klasse,
+    schneidet die jeweiligen Bereiche per deskew_crop() aus und wertet
+    DataMatrix und OCR getrennt und parallel aus.
+    
+    Args:
+        frame (np.ndarray): Das vollständige Kamerabild (BGR).
+        detections (list[dict]): Liste von YOLO-Detections, jeweils:
+            {"cls": int, "box": (x1, y1, x2, y2), "conf": float}
+            cls=0: datamatrix, cls=1: text
+            
+    Returns:
+        dict: Das Endergebnis des Scans (gleiche Struktur wie scan()).
+    """
+    if frame is None:
+        return {
+            "success": False, "result": "Kein Bild vorhanden.",
+            "method": "Fehler", "confidence": 0.0,
+            "dmtx_result": None, "ocr_result": None, "verified": False,
+            "ocr_partial_display": None,
+        }
+
+    # Detections nach Klasse sortieren (je die mit höchster Konfidenz)
+    dmx_det = None
+    txt_det = None
+    for det in detections:
+        cls = det.get("cls", -1)
+        if cls == 0:  # datamatrix
+            if dmx_det is None or det["conf"] > dmx_det["conf"]:
+                dmx_det = det
+        elif cls == 1:  # text
+            if txt_det is None or det["conf"] > txt_det["conf"]:
+                txt_det = det
+
+    dmx_info = f"DMX=Ja(conf={dmx_det['conf']:.2f})" if dmx_det else "DMX=Nein"
+    txt_info = f"TXT=Ja(conf={txt_det['conf']:.2f})" if txt_det else "TXT=Nein"
+    logger.info(f"[2CLASS] Detections: {dmx_info}, {txt_info}")
+
+    # --- Fallback: Wenn keine der beiden Klassen erkannt wurde → scan() auf Gesamtbild ---
+    if dmx_det is None and txt_det is None:
+        logger.warning("[2CLASS] Keine Detections vorhanden. Fallback auf scan().")
+        return scan(frame)
+
+    # --- Crops erzeugen ---
+    dmx_crop = None
+    txt_crop = None
+
+    if dmx_det:
+        dmx_crop = deskew_crop(frame, dmx_det["box"], padding=40)
+        logger.info(f"[2CLASS] DataMatrix-Crop: {dmx_crop.shape[1]}x{dmx_crop.shape[0]}")
+
+    if txt_det:
+        txt_crop = deskew_crop(frame, txt_det["box"], padding=30)
+        logger.info(f"[2CLASS] Text-Crop: {txt_crop.shape[1]}x{txt_crop.shape[0]}")
+
+    # --- Parallele Auswertung ---
+    dmx_result = None
+    ocr_result = None
+
+    t_start = time.time()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = {}
+
+        if dmx_crop is not None:
+            futures["dmx"] = executor.submit(scan_datamatrix, dmx_crop)
+
+        if txt_crop is not None:
+            futures["ocr"] = executor.submit(scan_ocr, txt_crop)
+
+        if "dmx" in futures:
+            try:
+                dmx_result = futures["dmx"].result()
+            except Exception as e:
+                logger.warning(f"[2CLASS] DataMatrix-Scan Fehler: {e}")
+                dmx_result = {
+                    "status": "blocked", "text": None,
+                    "confidence": 0.0, "method_detail": "DMX Fehler",
+                    "observed_grid": None,
+                }
+
+        if "ocr" in futures:
+            try:
+                ocr_result = futures["ocr"].result()
+            except Exception as e:
+                logger.warning(f"[2CLASS] OCR-Scan Fehler: {e}")
+                ocr_result = {
+                    "status": "failed", "text": None, "confidence": 0.0,
+                    "partial_display": None, "readable_chars": None,
+                    "missing_positions": [], "raw_candidate": None,
+                }
+
+    t_total = int((time.time() - t_start) * 1000)
+
+    # --- Fallback-Ergebnisse für fehlende Pipelines ---
+    if dmx_result is None:
+        dmx_result = {
+            "status": "blocked", "text": None,
+            "confidence": 0.0, "method_detail": "Nicht erkannt",
+            "observed_grid": None,
+        }
+
+    if ocr_result is None:
+        ocr_result = {
+            "status": "failed", "text": None, "confidence": 0.0,
+            "partial_display": None, "readable_chars": None,
+            "missing_positions": [], "raw_candidate": None,
+        }
+
+    # --- Ergebnisse mergen (bestehende Triple-Fusion-Logik) ---
+    # Für die merge-Funktion brauchen wir das Frame für eventuelle Rekonstruktionen.
+    # Wir nutzen den DMX-Crop, wenn vorhanden, sonst das Gesamtbild.
+    merge_frame = dmx_crop if dmx_crop is not None else frame
+
+    result = _merge_results(ocr_result, dmx_result, merge_frame, ref_img_result=None)
+
+    result["_internal_timing"] = {"total_2class_ms": t_total}
+    result["_2class_mode"] = True
+    result["_detections"] = {
+        "dmx_box": dmx_det["box"] if dmx_det else None,
+        "dmx_conf": dmx_det["conf"] if dmx_det else 0.0,
+        "txt_box": txt_det["box"] if txt_det else None,
+        "txt_conf": txt_det["conf"] if txt_det else 0.0,
+    }
+
+    logger.info(
+        f"[2CLASS] Ergebnis: success={result['success']}, "
+        f"method={result['method']}, result='{result['result']}' ({t_total}ms)"
+    )
+
+    return result
+
+
 def scan(frame: np.ndarray) -> dict:
     """
     Haupt-Scan-Funktion mit Triple-Validation (v5.0).
