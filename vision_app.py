@@ -463,6 +463,12 @@ class AIVisionApp(ctk.CTk):
         self._last_frame = None
         self._canvas_img_id = None  # Tracking für Canvas-Bild (Speicherleck-Fix)
 
+        # --- Smart Auto-Scan (Präsenzerkennung) ---
+        self.auto_scan_enabled = False
+        self._presence_state = "EMPTY"  # "EMPTY" | "SCANNED"
+        self._presence_counter = 0
+        self._absence_counter = 0
+
         # --- ROI / Zoom State ---
         self._roi = None
         self._drawing = False
@@ -637,6 +643,16 @@ class AIVisionApp(ctk.CTk):
         )
         self.train_capture_btn.grid(row=12, column=0, padx=20, pady=(0, 6))
 
+        self.auto_scan_switch = ctk.CTkSwitch(
+            self.sidebar, text="Auto-Scan (Präsenz)",
+            font=ctk.CTkFont(size=12, weight="bold"), text_color=TXT_DARK,
+            command=self._on_auto_scan_toggled
+        )
+        if self._config.get("auto_scan", False):
+            self.auto_scan_enabled = True
+            self.auto_scan_switch.select()
+        self.auto_scan_switch.grid(row=13, column=0, padx=20, pady=(6, 6), sticky="w")
+
         self.zoom_info_label = ctk.CTkLabel(
             self.sidebar, text="Zoom: 1.0x",
             font=ctk.CTkFont(size=11), text_color=TXT_LIGHT
@@ -721,6 +737,12 @@ class AIVisionApp(ctk.CTk):
             font=ctk.CTkFont(size=10), text_color=TXT_LIGHT, anchor="e"
         )
         self.auto_train_label.grid(row=2, column=2, padx=(8, 16), pady=(0, 2), sticky="e")
+
+    def _on_auto_scan_toggled(self):
+        self.auto_scan_enabled = bool(self.auto_scan_switch.get())
+        self._config["auto_scan"] = self.auto_scan_enabled
+        _save_config(self._config)
+        logger.info(f"Auto-Scan Präsenzerkennung gesetzt auf: {self.auto_scan_enabled}")
 
     # ------------------------------------------------------------------ #
     #  Maus-Zoom: Rechteck zeichnen                                        #
@@ -1182,6 +1204,31 @@ class AIVisionApp(ctk.CTk):
                     with self._model_lock:
                         results = self.model.predict(display_frame, conf=0.15, verbose=False)
                         self._last_detections = results[0]
+
+                # --- Smart Auto-Scan (Präsenzerkennung) ---
+                if self.auto_scan_enabled and not self._scan_running:
+                    has_presence = False
+                    with self._model_lock:
+                        if self._last_detections is not None and hasattr(self._last_detections, 'boxes'):
+                            for b in self._last_detections.boxes:
+                                conf = float(b.conf[0].cpu().item())
+                                if conf >= 0.45:  # Mindestkonfidenz für Präsenz
+                                    has_presence = True
+                                    break
+                    
+                    if has_presence:
+                        self._absence_counter = 0
+                        if self._presence_state == "EMPTY":
+                            self._presence_counter += 1
+                            if self._presence_counter >= 2:  # 2 aufeinanderfolgende Frames stabil
+                                self._presence_state = "SCANNED"
+                                logger.info("Auto-Scan getriggert durch KI-Präsenzerkennung!")
+                                self.after(0, self.trigger_scan)
+                    else:
+                        self._presence_counter = 0
+                        self._absence_counter += 1
+                        if self._absence_counter >= 3:  # 3 leere Frames -> wieder bereit für nächste Horde
+                            self._presence_state = "EMPTY"
                 
                 # Synchronisierte Kopie der Detektionen zum Zeichnen holen (W4)
                 detections_to_draw = None

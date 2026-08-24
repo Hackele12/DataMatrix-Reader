@@ -489,6 +489,47 @@ class CameraService:
         except Exception:
             pass
 
+    def run_auto_scan_loop(self):
+        presence_state = "EMPTY"
+        presence_counter = 0
+        absence_counter = 0
+        logger.info(f"[{self.cam_name}] Auto-Scan Präsenzerkennung aktiv!")
+        
+        while True:
+            try:
+                time.sleep(0.3)
+                if not self.grabber or not getattr(self.grabber, "running", False):
+                    continue
+                frame = self.grabber.get_frame()
+                if frame is None:
+                    continue
+                
+                has_presence = False
+                if self.model:
+                    results = self.model(frame, verbose=False)
+                    if results and len(results[0].boxes) > 0:
+                        for box in results[0].boxes:
+                            if float(box.conf[0]) >= 0.45:
+                                has_presence = True
+                                break
+                
+                if has_presence:
+                    absence_counter = 0
+                    if presence_state == "EMPTY":
+                        presence_counter += 1
+                        if presence_counter >= 2:
+                            presence_state = "SCANNED"
+                            logger.info(f"[{self.cam_name}] Auto-Scan getriggert durch KI Präsenzerkennung!")
+                            self.process_scan()
+                else:
+                    presence_counter = 0
+                    absence_counter += 1
+                    if absence_counter >= 3:
+                        presence_state = "EMPTY"
+            except Exception as e:
+                logger.error(f"[{self.cam_name}] Auto-Scan Fehler: {e}")
+                time.sleep(1.0)
+
     def stop(self):
         if self.grabber:
             self.grabber.stop()
@@ -546,6 +587,9 @@ def main():
             t = threading.Thread(target=srv.run_tcp_server, daemon=True)
             t.start()
             server_threads.append(t)
+            if cam_cfg.get("auto_scan", False):
+                t_auto = threading.Thread(target=srv.run_auto_scan_loop, daemon=True)
+                t_auto.start()
         else:
             logger.error(f"Kamera '{cam_cfg.get('name')}' ({cam_cfg.get('camera_ip')}) konnte nicht gestartet werden!")
 
