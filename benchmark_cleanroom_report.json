@@ -1,0 +1,327 @@
+{
+  "total_images": 32,
+  "correct_predictions": 23,
+  "accuracy_percent": 71.88,
+  "details": [
+    {
+      "image": "train_data_20260820_122751.jpg",
+      "expected": "B182",
+      "predicted": "FEHLER",
+      "match": false,
+      "method": "Fehler",
+      "confidence": 0.0,
+      "time_ms": 29905,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_122753.jpg",
+      "expected": "B182",
+      "predicted": "B267",
+      "match": false,
+      "method": "OCR",
+      "confidence": 0.8235357256957795,
+      "time_ms": 16447,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_122813.jpg",
+      "expected": "B006",
+      "predicted": "B006",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 0.9,
+      "time_ms": 2420,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_122814.jpg",
+      "expected": "B006",
+      "predicted": "B006",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 0.9,
+      "time_ms": 2598,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_122815.jpg",
+      "expected": "B006",
+      "predicted": "B006",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 0.9,
+      "time_ms": 1274,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_122847.jpg",
+      "expected": "B001",
+      "predicted": "B001",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 905,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_122848.jpg",
+      "expected": "B001",
+      "predicted": "B001",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 1486,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_122903.jpg",
+      "expected": "B177",
+      "predicted": "B177",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 2235,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_122913.jpg",
+      "expected": "B177",
+      "predicted": "B177",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 6324,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_123031.jpg",
+      "expected": "P230",
+      "predicted": "P230",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 1459,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_123040.jpg",
+      "expected": "P230",
+      "predicted": "P230",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 1768,
+      "num_detections": 3
+    },
+    {
+      "image": "train_data_20260820_123117.jpg",
+      "expected": "W025",
+      "predicted": "W025",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 10455,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_123118.jpg",
+      "expected": "W025",
+      "predicted": "W025",
+      "match": true,
+      "method": "OCR",
+      "confidence": 0.9135282635688782,
+      "time_ms": 22245,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_123800.jpg",
+      "expected": "W005",
+      "predicted": "FEHLER",
+      "match": false,
+      "method": "Fehler",
+      "confidence": 0.0,
+      "time_ms": 18356,
+      "num_detections": 3
+    },
+    {
+      "image": "train_data_20260820_123833.jpg",
+      "expected": "W001",
+      "predicted": "FEHLER",
+      "match": false,
+      "method": "Fehler",
+      "confidence": 0.0,
+      "time_ms": 21120,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_123834.jpg",
+      "expected": "W001",
+      "predicted": "W001",
+      "match": true,
+      "method": "Rekonstruiert",
+      "confidence": 0.98,
+      "time_ms": 19995,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_123904.jpg",
+      "expected": "W003",
+      "predicted": "FEHLER",
+      "match": false,
+      "method": "Fehler",
+      "confidence": 0.0,
+      "time_ms": 17435,
+      "num_detections": 1
+    },
+    {
+      "image": "train_data_20260820_123905.jpg",
+      "expected": "W003",
+      "predicted": "FEHLER",
+      "match": false,
+      "method": "Fehler",
+      "confidence": 0.0,
+      "time_ms": 21674,
+      "num_detections": 1
+    },
+    {
+      "image": "train_data_20260820_123934.jpg",
+      "expected": "P938",
+      "predicted": "P938",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 1656,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_123935.jpg",
+      "expected": "P938",
+      "predicted": "P938",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 1911,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_124005.jpg",
+      "expected": "W029",
+      "predicted": "FEHLER",
+      "match": false,
+      "method": "Fehler",
+      "confidence": 0.0,
+      "time_ms": 16511,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_124050.jpg",
+      "expected": "W038",
+      "predicted": "W038",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 3421,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_124119.jpg",
+      "expected": "W044",
+      "predicted": "FEHLER",
+      "match": false,
+      "method": "Fehler",
+      "confidence": 0.0,
+      "time_ms": 16223,
+      "num_detections": 3
+    },
+    {
+      "image": "train_data_20260820_124143.jpg",
+      "expected": "W028",
+      "predicted": "W028",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 3837,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_124223.jpg",
+      "expected": "W052",
+      "predicted": "W052",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 2886,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_124227.jpg",
+      "expected": "W052",
+      "predicted": "W052",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 2638,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_124250.jpg",
+      "expected": "W223",
+      "predicted": "W223",
+      "match": true,
+      "method": "Rekonstruiert",
+      "confidence": 0.7,
+      "time_ms": 20235,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_124259.jpg",
+      "expected": "P228",
+      "predicted": "P228",
+      "match": true,
+      "method": "Rekonstruiert",
+      "confidence": 0.7,
+      "time_ms": 24193,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_124332.jpg",
+      "expected": "P230",
+      "predicted": "P230",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 9605,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_124411.jpg",
+      "expected": "W040",
+      "predicted": "FEHLER",
+      "match": false,
+      "method": "Fehler",
+      "confidence": 0.0,
+      "time_ms": 19091,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_130933.jpg",
+      "expected": "A557",
+      "predicted": "A557",
+      "match": true,
+      "method": "Verifiziert",
+      "confidence": 1.0,
+      "time_ms": 4295,
+      "num_detections": 2
+    },
+    {
+      "image": "train_data_20260820_131044.jpg",
+      "expected": "A671",
+      "predicted": "A671",
+      "match": true,
+      "method": "Rekonstruiert",
+      "confidence": 0.9,
+      "time_ms": 6690,
+      "num_detections": 2
+    }
+  ]
+}

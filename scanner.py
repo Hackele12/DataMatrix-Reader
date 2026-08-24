@@ -4187,6 +4187,13 @@ def scan_2class(frame: np.ndarray, detections: list[dict]) -> dict:
         f"method={result['method']}, result='{result['result']}' ({t_total}ms)"
     )
 
+    # --- Smart Fallback: Wenn 2-Klassen-Auswertung fehlschlägt, versuche scan() auf dem Gesamtbild ---
+    if not result.get("success"):
+        logger.info("[2CLASS] 2-Klassen-Crop ohne Erfolg. Starte Fallback auf scan().")
+        fallback_res = scan(frame)
+        if fallback_res.get("success"):
+            return fallback_res
+
     return result
 
 
