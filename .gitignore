@@ -45,6 +45,8 @@ ground_truth_template.json
 
 # Ignore zip archives and benchmark reports
 *.zip
+releases/
+benchmarks/
 benchmark_ab_report.json
 
 # OS files
