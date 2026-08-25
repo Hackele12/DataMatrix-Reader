@@ -3986,12 +3986,15 @@ def scan_datamatrix(frame: np.ndarray) -> dict:
             }
 
     # 3. Rekonstruktions-Versuch (ohne OCR-Hinweis)
+    # ACHTUNG: Auf Crops ist blinde 4000-Code-Rekonstruktion unzuverlässig.
+    # Konfidenz-Cap auf 0.85 setzen und strengere Schwellen anwenden.
     recon_result = _try_reconstruct(frame, None, 0.0, None)
     if recon_result is not None and recon_result.get("success"):
-        logger.info(f"[2CLASS-DMX] Rekonstruktion: '{recon_result['result']}' ({int((time.time()-t0)*1000)}ms)")
+        recon_conf = min(0.85, recon_result.get("confidence", 0.85))
+        logger.info(f"[2CLASS-DMX] Rekonstruktion: '{recon_result['result']}' (Conf={recon_conf:.2f}, {int((time.time()-t0)*1000)}ms)")
         return {
             "status": "reconstructed", "text": recon_result["result"],
-            "confidence": recon_result.get("confidence", 0.85),
+            "confidence": recon_conf,
             "method_detail": recon_result.get("method", "Rekonstruiert"),
             "observed_grid": None,
         }
@@ -4080,13 +4083,19 @@ def scan_2class(frame: np.ndarray, detections: list[dict]) -> dict:
         }
 
     # Detections nach Klasse sortieren (je die mit höchster Konfidenz)
+    # WICHTIG: DMX-Detection-Schwelle bei 0.80 — niedrigere Konfidenzen erzeugen
+    # systematisch falsche Crops (Diagnose: Bilder 130933/131044/132635).
+    MIN_DMX_YOLO_CONF = 0.80
     dmx_det = None
     txt_det = None
     for det in detections:
         cls = det.get("cls", -1)
         if cls == 0:  # datamatrix
-            if dmx_det is None or det["conf"] > dmx_det["conf"]:
-                dmx_det = det
+            if det["conf"] >= MIN_DMX_YOLO_CONF:
+                if dmx_det is None or det["conf"] > dmx_det["conf"]:
+                    dmx_det = det
+            else:
+                logger.info(f"[2CLASS] DMX-Detection verworfen: conf={det['conf']:.2f} < {MIN_DMX_YOLO_CONF}")
         elif cls == 1:  # text
             if txt_det is None or det["conf"] > txt_det["conf"]:
                 txt_det = det
@@ -4187,14 +4196,90 @@ def scan_2class(frame: np.ndarray, detections: list[dict]) -> dict:
         f"method={result['method']}, result='{result['result']}' ({t_total}ms)"
     )
 
-    # --- Smart Fallback: Wenn 2-Klassen-Auswertung fehlschlägt, versuche scan() auf dem Gesamtbild ---
+    # --- Cross-Validation & Smart Fallback ---
+    # Priorität: KEINE Fehllesungen. Lieber "Fehler" als falscher Code.
     if not result.get("success"):
+        # Fall A: 2class hat nichts gefunden → Fallback auf scan()
         logger.info("[2CLASS] 2-Klassen-Crop ohne Erfolg. Starte Fallback auf scan().")
         fallback_res = scan(frame)
         if fallback_res.get("success"):
             return fallback_res
+        return result
 
-    return result
+    # Fall B: 2class hat ein Ergebnis, aber ist es verlässlich?
+    is_verified = result.get("verified", False) and result.get("confidence", 0) >= 1.0
+
+    if is_verified:
+        # Doppelt verifiziert (DMX + OCR stimmen überein) → direkt akzeptieren
+        logger.info(f"[2CLASS] Ergebnis doppelt verifiziert. Akzeptiere '{result['result']}'.")
+        return result
+
+    # Nicht verifiziert → Cross-Validation mit scan() auf dem Gesamtbild
+    logger.info(
+        f"[2CLASS-CROSSVAL] Ergebnis '{result['result']}' nicht verifiziert "
+        f"(method={result['method']}, conf={result.get('confidence', 0):.2f}). "
+        f"Starte Gegenprobe mit scan() auf Gesamtbild..."
+    )
+    crossval_res = scan(frame)
+
+    if not crossval_res.get("success"):
+        # scan() hat auch nichts gefunden → 2class-Ergebnis NUR akzeptieren wenn es KEINE blinde Rekonstruktion war
+        if result.get("confidence", 0) >= 0.95 and result.get("method") != "Rekonstruiert":
+            logger.info(
+                f"[2CLASS-CROSSVAL] scan() fehlgeschlagen, aber 2class hat hohe Konfidenz "
+                f"({result.get('confidence', 0):.2f}). Akzeptiere '{result['result']}'.")
+            return result
+        else:
+            logger.warning(
+                f"[2CLASS-CROSSVAL] scan() fehlgeschlagen und 2class-Ergebnis unverifiziert/Rekonstruktion "
+                f"({result.get('method')}, conf={result.get('confidence', 0):.2f}). Melde Fehler.")
+            return {
+                "success": False, "result": "Unsicheres Ergebnis.",
+                "method": "Fehler", "confidence": 0.0,
+                "dmtx_result": result.get("dmtx_result"),
+                "ocr_result": result.get("ocr_result"),
+                "verified": False, "ocr_partial_display": result.get("ocr_partial_display"),
+            }
+
+    # Beide haben ein Ergebnis
+    code_2class = result.get("result")
+    code_fullframe = crossval_res.get("result")
+
+    if code_2class == code_fullframe:
+        # Beide stimmen überein → hohe Sicherheit
+        best_conf = max(result.get("confidence", 0), crossval_res.get("confidence", 0))
+        logger.info(
+            f"[2CLASS-CROSSVAL] Übereinstimmung! Beide Pipelines: '{code_2class}' "
+            f"(Konfidenz={best_conf:.2f})")
+        crossval_res["confidence"] = best_conf
+        return crossval_res
+
+    # Widerspruch: 2class ≠ scan()
+    crossval_verified = crossval_res.get("verified", False) or (
+        crossval_res.get("method") == "Verifiziert" and crossval_res.get("confidence", 0) >= 0.98
+    )
+
+    if crossval_verified:
+        # scan() ist verifiziert → bevorzuge scan()
+        logger.info(
+            f"[2CLASS-CROSSVAL] Widerspruch: 2class='{code_2class}' vs scan()='{code_fullframe}'. "
+            f"scan() ist verifiziert → bevorzuge '{code_fullframe}'.")
+        return crossval_res
+
+    # Keiner verifiziert + Widerspruch → FEHLER melden (keine Fehllesung!)
+    logger.warning(
+        f"[2CLASS-CROSSVAL] Widerspruch ohne Verifikation: "
+        f"2class='{code_2class}' vs scan()='{code_fullframe}'. Melde Fehler.")
+    return {
+        "success": False,
+        "result": f"Widerspruch: {code_2class} vs {code_fullframe}",
+        "method": "Fehler",
+        "confidence": 0.0,
+        "dmtx_result": result.get("dmtx_result"),
+        "ocr_result": crossval_res.get("ocr_result"),
+        "verified": False,
+        "ocr_partial_display": crossval_res.get("ocr_partial_display"),
+    }
 
 
 def scan(frame: np.ndarray) -> dict:
