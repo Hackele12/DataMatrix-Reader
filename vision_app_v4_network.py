@@ -128,9 +128,10 @@ def load_master_config(config_path: str) -> tuple[list[dict], str]:
 
 class IDSFrameGrabber:
     """Frame-Grabber für eine spezifische IDS-Kamera (gezielt per IP gematcht)."""
-    def __init__(self, camera_ip: str, cam_name: str = "Kamera"):
+    def __init__(self, camera_ip: str, cam_name: str = "Kamera", other_configured_ips: list[str] | None = None):
         self.camera_ip = camera_ip
         self.cam_name = cam_name
+        self.other_configured_ips = set(other_configured_ips or [])
         self.frame = None
         self.running = False
         self._lock = threading.Lock()
@@ -154,50 +155,95 @@ class IDSFrameGrabber:
             
             # Unicast IP-Adresse im DeviceManager registrieren
             if self.camera_ip:
-                ip_int = struct.unpack("!I", socket.inet_aton(self.camera_ip))[0]
-                dm.Update()
-                for sys_obj in dm.Systems():
-                    for iface in sys_obj.Interfaces():
-                        try:
-                            op = iface.OpenedInterface()
-                            for nm in op.NodeMaps():
-                                if nm.HasNode("GevDiscoveryUnicastIPAddressToAdd"):
-                                    nm.FindNode("GevDiscoveryUnicastIPAddressToAdd").SetValue(ip_int)
-                                    nm.FindNode("GevDiscoveryUnicastIPAddressAdd").Execute()
-                        except Exception:
-                            pass
+                try:
+                    ip_int = struct.unpack("!I", socket.inet_aton(self.camera_ip))[0]
+                    dm.Update()
+                    for sys_obj in dm.Systems():
+                        for iface in sys_obj.Interfaces():
+                            try:
+                                op = iface.OpenedInterface()
+                                for nm in op.NodeMaps():
+                                    if nm.HasNode("GevDiscoveryUnicastIPAddressToAdd"):
+                                        nm.FindNode("GevDiscoveryUnicastIPAddressToAdd").SetValue(ip_int)
+                                        nm.FindNode("GevDiscoveryUnicastIPAddressAdd").Execute()
+                            except Exception:
+                                pass
+                except Exception as e_u:
+                    logger.warning(f"[{self.cam_name}] Unicast IP Setup ({self.camera_ip}): {e_u}")
+
             dm.Update()
+            devices = list(dm.Devices())
+            logger.info(f"[{self.cam_name}] IDS Device Manager ergab {len(devices)} Gerät(e).")
+
+            openable_candidates = []
+            for idx, desc in enumerate(devices):
+                openable = desc.IsOpenable()
+                model_n = desc.ModelName()
+                sn = desc.SerialNumber()
+                logger.info(f"  [{self.cam_name}] Gerät {idx}: {model_n} (S/N: {sn}), IsOpenable={openable}")
+                if openable:
+                    openable_candidates.append(desc)
 
             matched_desc = None
             matched_device = None
             matched_nodemap = None
 
-            # Gezielt nach der Kamera suchen, deren IP genau self.camera_ip entspricht
-            for desc in dm.Devices():
-                if not desc.IsOpenable():
-                    continue
-                try:
-                    dev = desc.OpenDevice(ids_peak.DeviceAccessType_Control)
-                    nm = dev.RemoteDevice().NodeMaps()[0]
-                    dev_ip = None
-                    if nm.HasNode("GevCurrentIPAddress"):
-                        ip_val = nm.FindNode("GevCurrentIPAddress").Value()
-                        dev_ip = socket.inet_ntoa(struct.pack("!I", ip_val))
-                    
-                    if dev_ip == self.camera_ip:
+            # 1. Stufe: Exakte IP-Übereinstimmung
+            if self.camera_ip and openable_candidates:
+                for desc in openable_candidates:
+                    try:
+                        dev = desc.OpenDevice(ids_peak.DeviceAccessType_Control)
+                        nm = dev.RemoteDevice().NodeMaps()[0]
+                        dev_ip = None
+                        if nm.HasNode("GevCurrentIPAddress"):
+                            ip_val = nm.FindNode("GevCurrentIPAddress").Value()
+                            dev_ip = socket.inet_ntoa(struct.pack("!I", ip_val))
+                        elif nm.HasNode("GevDeviceIPAddress"):
+                            ip_val = nm.FindNode("GevDeviceIPAddress").Value()
+                            dev_ip = socket.inet_ntoa(struct.pack("!I", ip_val))
+
+                        logger.info(f"[{self.cam_name}] Prüfe Kamera S/N {desc.SerialNumber()}: IP={dev_ip}")
+                        if dev_ip == self.camera_ip:
+                            matched_desc = desc
+                            matched_device = dev
+                            matched_nodemap = nm
+                            logger.info(f"[{self.cam_name}] Exact IP Match! IP {dev_ip} (S/N: {desc.SerialNumber()})")
+                            break
+                        else:
+                            del dev
+                    except Exception as e_open:
+                        logger.warning(f"[{self.cam_name}] Fehler beim IP-Check der Kamera S/N {desc.SerialNumber()}: {e_open}")
+
+            # 2. Stufe (Fallback): Wenn keine exakte IP gefunden, wähle erste freie IDS-Kamera (überspringe reservierte IPs)
+            if matched_device is None and openable_candidates:
+                logger.warning(f"[{self.cam_name}] Keine Kamera mit exakter IP '{self.camera_ip}' gefunden. Suche freie Fallback IDS-Kamera...")
+                for desc in openable_candidates:
+                    try:
+                        dev = desc.OpenDevice(ids_peak.DeviceAccessType_Control)
+                        nm = dev.RemoteDevice().NodeMaps()[0]
+                        dev_ip = None
+                        if nm.HasNode("GevCurrentIPAddress"):
+                            ip_val = nm.FindNode("GevCurrentIPAddress").Value()
+                            dev_ip = socket.inet_ntoa(struct.pack("!I", ip_val))
+                        elif nm.HasNode("GevDeviceIPAddress"):
+                            ip_val = nm.FindNode("GevDeviceIPAddress").Value()
+                            dev_ip = socket.inet_ntoa(struct.pack("!I", ip_val))
+
+                        if dev_ip and dev_ip in self.other_configured_ips:
+                            logger.info(f"[{self.cam_name}] Überspringe Kamera S/N {desc.SerialNumber()} (IP {dev_ip}), da sie für eine andere Kamera reserviert ist.")
+                            del dev
+                            continue
+
                         matched_desc = desc
                         matched_device = dev
                         matched_nodemap = nm
-                        logger.info(f"[{self.cam_name}] Kamera-Match erfolgreich! IP {dev_ip} (S/N: {desc.SerialNumber()})")
+                        logger.info(f"[{self.cam_name}] Fallback Kamera-Match erfolgreich! S/N: {desc.SerialNumber()} ({desc.ModelName()})")
                         break
-                    else:
-                        # IP passt nicht -> Device wieder freigeben für die andere Kamera
-                        del dev
-                except Exception as e_open:
-                    logger.warning(f"[{self.cam_name}] Fehler beim Prüfen der Kamera S/N {desc.SerialNumber()}: {e_open}")
+                    except Exception as e_fb:
+                        logger.warning(f"[{self.cam_name}] Fallback Open fehlgeschlagen für S/N {desc.SerialNumber()}: {e_fb}")
 
             if matched_device is None:
-                logger.error(f"[{self.cam_name}] Keine passende Kamera mit IP {self.camera_ip} im Netzwerk gefunden!")
+                logger.error(f"[{self.cam_name}] Keine benutzbare IDS-Kamera im Netzwerk/System verfügbar!")
                 return False
 
             self._device = matched_device
@@ -221,7 +267,7 @@ class IDSFrameGrabber:
             self.running = True
             self._thread = threading.Thread(target=self._grab_loop, daemon=True)
             self._thread.start()
-            logger.info(f"[{self.cam_name}] Kamera gestartet. Erfasst kontinuierlich Bilder.")
+            logger.info(f"[{self.cam_name}] Kamera erfolgreich gestartet. S/N: {self.serial}, Model: {self.model_name}")
             return True
         except Exception as e:
             logger.error(f"[{self.cam_name}] Start fehlgeschlagen: {e}")
@@ -312,6 +358,85 @@ class IDSFrameGrabber:
         logger.info(f"[{self.cam_name}] Kamera-Stream geschlossen.")
 
 
+class FallbackFrameGrabber:
+    """Fallback Grabber falls keine physische IDS-Kamera angeschlossen ist (Offline / Simulation)."""
+    def __init__(self, cam_name: str = "Demo"):
+        self.cam_name = cam_name
+        self.running = False
+        self.model_name = "Fallback-Simulation"
+        self.serial = "OFFLINE-0000"
+        self.frame = None
+        self.exposure_us = 6000.0
+        self.gain = 2.0
+        self.last_frame_time = time.time()
+        self._thread = None
+        self._lock = threading.Lock()
+
+    def start(self) -> bool:
+        self.running = True
+        self._thread = threading.Thread(target=self._sim_loop, daemon=True)
+        self._thread.start()
+        logger.info(f"[{self.cam_name}] Fallback-Frame-Grabber aktiv (TCP Server lauscht auf Anfragen).")
+        return True
+
+    def _sim_loop(self):
+        test_img = None
+        td_dir = "training_data"
+        if os.path.exists(td_dir):
+            imgs = [f for f in os.listdir(td_dir) if f.lower().endswith(('.jpg', '.png'))]
+            if imgs:
+                test_img = cv2.imread(os.path.join(td_dir, imgs[0]))
+
+        if test_img is None:
+            test_img = np.zeros((1080, 1440, 3), dtype=np.uint8)
+            cv2.putText(test_img, f"DATA DETECTOR OFFLINE STREAM: {self.cam_name}", (100, 200),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 2)
+            cv2.putText(test_img, "Keine physische IDS Kamera verbunden", (100, 300),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+
+        while self.running:
+            with self._lock:
+                self.frame = test_img.copy()
+                self.last_frame_time = time.time()
+            time.sleep(0.1)
+
+    def get_frame(self) -> np.ndarray | None:
+        with self._lock:
+            return self.frame.copy() if self.frame is not None else None
+
+    def set_exposure(self, exposure_us: float):
+        self.exposure_us = exposure_us
+
+    def set_gain(self, gain: float):
+        self.gain = gain
+
+    def stop(self):
+        self.running = False
+        if self._thread:
+            self._thread.join(timeout=1.0)
+        logger.info(f"[{self.cam_name}] Fallback-Grabber gestoppt.")
+
+
+def _check_dual_presence(boxes, dmx_min_conf=0.70, txt_min_conf=0.35, max_gap_ratio=2.5) -> bool:
+    """
+    Prüft VOR dem Auslösen des Auto-Scans, ob mindestens eine Klasse (DataMatrix oder Text)
+    im Bild vorhanden ist.
+    """
+    if boxes is None or len(boxes) == 0:
+        return False
+
+    for b in boxes:
+        cls_id = int(b.cls[0].cpu().item() if hasattr(b.cls[0], 'cpu') else b.cls[0])
+        conf = float(b.conf[0].cpu().item() if hasattr(b.conf[0], 'cpu') else b.conf[0])
+        if cls_id == 0 and conf >= dmx_min_conf:
+            return True
+        elif cls_id == 1 and conf >= txt_min_conf:
+            return True
+
+    return False
+
+
+
 class CameraService:
     """Service für eine einzelne Kamera inklusive KI-Auswertung und TCP-Server."""
     def __init__(self, cam_cfg: dict, shared_yolo_model, master_log_dir: str = r"U:\Temp\DataMatrixReader.logFiles", is_2class: bool = False):
@@ -322,8 +447,9 @@ class CameraService:
         self.port = int(cam_cfg.get("port", 9500))
         self.model = shared_yolo_model
         self._is_2class = is_2class
-        self.grabber = None
         self._scan_counter = 0
+        self._tcp_scan_token = 0
+        self._tcp_scan_lock = threading.Lock()
 
         # Dedicated Scan Logger per Camera im dynamisch aufgelösten Log-Pfad
         if ScanLogger is not None:
@@ -340,20 +466,34 @@ class CameraService:
         os.makedirs(os.path.join(self._auto_train_dir, "labels"), exist_ok=True)
         self._auto_train_count = len(os.listdir(os.path.join(self._auto_train_dir, "images")))
 
-    def start_camera(self) -> bool:
-        self.grabber = IDSFrameGrabber(camera_ip=self.ip, cam_name=self.cam_name)
-        if not self.grabber.start():
-            return False
+    def start_camera(self, all_cams_cfg: list[dict] | None = None) -> bool:
+        other_ips = []
+        if all_cams_cfg:
+            for c in all_cams_cfg:
+                if c.get("id") != self.cam_id and c.get("camera_ip"):
+                    other_ips.append(c.get("camera_ip"))
 
+        self.grabber = IDSFrameGrabber(camera_ip=self.ip, cam_name=self.cam_name, other_configured_ips=other_ips)
+        if not self.grabber.start():
+            logger.warning(f"[{self.cam_name}] IDS-Kamera konnte nicht gestartet werden → Starte Fallback-Grabber (TCP Server bleibt auf Port {self.port} aktiv).")
+            self.grabber = FallbackFrameGrabber(cam_name=self.cam_name)
         exp_val = float(self.cfg.get("last_exposure", 4.0))
         gain_val = float(self.cfg.get("last_gain", 2.0))
         self.grabber.set_exposure(exp_val * 1000.0)
         self.grabber.set_gain(gain_val)
         return True
 
-    def process_scan(self) -> str:
+    def process_scan(self, token_id: int = 0) -> str | None:
+        """Führt eine Einzel-Auswertung aus. Kann storniert werden falls ein neuer Trigger eintrifft."""
+        cancellation_check = lambda: (token_id > 0 and self._tcp_scan_token != token_id)
+
         start_time = time.time()
-        scan_snapshot = self.grabber.get_frame() if self.grabber else None
+        self._scan_counter += 1
+
+        scan_snapshot = None
+        if self.grabber and getattr(self.grabber, "running", False):
+            scan_snapshot = self.grabber.get_frame()
+
         if scan_snapshot is None:
             logger.error(f"[{self.cam_name}] Konnte kein Bild von der Kamera abrufen!")
             return "ERROR_NO_FRAME"
@@ -365,63 +505,61 @@ class CameraService:
         crop_size = None
 
         t_yolo_start = time.time()
-        yolo_detections = []  # Für 2-Klassen-Modus
+        yolo_detections = []
         use_2class = False
         try:
             if self.model:
                 results = self.model(scan_snapshot, verbose=False)
                 if results and len(results[0].boxes) > 0:
-                    # Alle Detections sammeln (mit Klasse, Box, Konfidenz)
                     for box in results[0].boxes:
                         cls_id = int(box.cls[0])
                         conf = float(box.conf[0])
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
-                        if conf > 0.3:  # Mindest-Konfidenz
+                        if conf > 0.3:
                             yolo_detections.append({
                                 "cls": cls_id,
                                 "box": (x1, y1, x2, y2),
                                 "conf": conf,
                             })
 
-                    # Prüfe ob 2-Klassen-Modell aktiv ist (Klassen 0 und 1 vorhanden)
                     detected_classes = set(d["cls"] for d in yolo_detections)
                     if self._is_2class and (0 in detected_classes or 1 in detected_classes):
                         use_2class = True
                         label_detected = True
-                        # Höchste Konfidenz als detection_conf
                         detection_conf = max(d["conf"] for d in yolo_detections) if yolo_detections else 0.0
-                        logger.info(
-                            f"[{self.cam_name}] 2-Klassen-Modus: {len(yolo_detections)} Detections "
-                            f"(Klassen: {detected_classes}, max Conf: {detection_conf:.2f})"
-                        )
                     elif yolo_detections:
-                        # Fallback: 1-Klassen-Modus (beste Box wie bisher)
                         best_det = max(yolo_detections, key=lambda d: d["conf"])
                         detection_conf = best_det["conf"]
                         detection_box = best_det["box"]
                         label_detected = True
                         scan_frame = scanner.deskew_crop(scan_snapshot, detection_box, padding=60)
                         crop_size = [scan_frame.shape[1], scan_frame.shape[0]]
-                        logger.info(
-                            f"[{self.cam_name}] KI Etikett gefunden (Konfidenz: {detection_conf:.2f}). "
-                            f"Crop: {crop_size[0]}x{crop_size[1]}."
-                        )
         except Exception as e:
             logger.error(f"[{self.cam_name}] Fehler bei KI-Auswertung: {e}")
         t_yolo_ms = int((time.time() - t_yolo_start) * 1000)
 
+        # Abbrechen & Verwerfen falls ein neuer Trigger eingetroffen ist
+        if cancellation_check():
+            logger.warning(f"[{self.cam_name}] Scan (Token {token_id}) VOR Auswertung abgebrochen & VERWORFEN!")
+            return None
+
         t_scan_start = time.time()
         if use_2class:
-            # 2-Klassen-Pipeline: Getrennte DataMatrix + Text Auswertung
-            result = scanner.scan_2class(scan_snapshot, yolo_detections)
+            result = scanner.scan_2class(scan_snapshot, yolo_detections, cancellation_check=cancellation_check)
         else:
-            # Fallback: Bisherige 1-Klassen-Pipeline
-            result = scanner.scan(scan_frame)
+            result = scanner.scan(scan_frame, cancellation_check=cancellation_check)
         t_scan_ms = int((time.time() - t_scan_start) * 1000)
+
+        # Abbrechen & Verwerfen falls während der Auswertung ein neuer Trigger eingetroffen ist
+        if cancellation_check() or result.get("cancelled"):
+            logger.warning(f"[{self.cam_name}] Scan (Token {token_id}) NACH Auswertung VERWORFEN (neuer Trigger).")
+            return None
+
         duration_ms = int((time.time() - start_time) * 1000)
         result["duration_ms"] = duration_ms
         logger.info(f"[{self.cam_name}] Scan fertig ({duration_ms}ms): {result}")
 
+        # Logging (nur für gültige, nicht stornierte Scans)
         if self.scan_logger:
             exp_us = getattr(self.grabber, "exposure_us", float(self.cfg.get("last_exposure", 6.0)) * 1000.0) if self.grabber else float(self.cfg.get("last_exposure", 6.0)) * 1000.0
             gain_val = getattr(self.grabber, "gain", float(self.cfg.get("last_gain", 2.0))) if self.grabber else float(self.cfg.get("last_gain", 2.0))
@@ -469,10 +607,16 @@ class CameraService:
                             if not data:
                                 break
                             if b"+" in data:
-                                logger.info(f"[{self.cam_name}] Trigger '+' empfangen. Starte Auswertung...")
-                                code = self.process_scan()
-                                response_bytes = b"\x02" + code.encode("utf-8") + b"\r\n\x04"
-                                conn.sendall(response_bytes)
+                                with self._tcp_scan_lock:
+                                    self._tcp_scan_token += 1
+                                    my_token = self._tcp_scan_token
+                                logger.info(f"[{self.cam_name}] Trigger '+' (Token {my_token}) empfangen. Starte Auswertung...")
+                                code = self.process_scan(token_id=my_token)
+                                if code is not None:
+                                    response_bytes = b"\x02" + code.encode("utf-8") + b"\r\n\x04"
+                                    conn.sendall(response_bytes)
+                                else:
+                                    logger.info(f"[{self.cam_name}] Scan (Token {my_token}) verworfen — keine Antwort gesendet.")
                             else:
                                 conn.sendall(b"\x02ERROR_UNKNOWN_COMMAND\r\n\x04")
                         except socket.timeout:
@@ -493,7 +637,7 @@ class CameraService:
         presence_state = "EMPTY"
         presence_counter = 0
         absence_counter = 0
-        logger.info(f"[{self.cam_name}] Auto-Scan Präsenzerkennung aktiv!")
+        logger.info(f"[{self.cam_name}] Auto-Scan Präsenzerkennung aktiv (DMX oder Text erkannt)!")
         
         while True:
             try:
@@ -508,10 +652,7 @@ class CameraService:
                 if self.model:
                     results = self.model(frame, verbose=False)
                     if results and len(results[0].boxes) > 0:
-                        for box in results[0].boxes:
-                            if float(box.conf[0]) >= 0.45:
-                                has_presence = True
-                                break
+                        has_presence = _check_dual_presence(results[0].boxes)
                 
                 if has_presence:
                     absence_counter = 0
@@ -519,7 +660,7 @@ class CameraService:
                         presence_counter += 1
                         if presence_counter >= 2:
                             presence_state = "SCANNED"
-                            logger.info(f"[{self.cam_name}] Auto-Scan getriggert durch KI Präsenzerkennung!")
+                            logger.info(f"[{self.cam_name}] Auto-Scan getriggert (DataMatrix oder Text erkannt)!")
                             self.process_scan()
                 else:
                     presence_counter = 0
@@ -582,7 +723,7 @@ def main():
 
     for cam_cfg in cams_cfg:
         srv = CameraService(cam_cfg, shared_yolo_model, master_log_dir=master_log_dir, is_2class=_is_2class_model)
-        if srv.start_camera():
+        if srv.start_camera(all_cams_cfg=cams_cfg):
             services.append(srv)
             t = threading.Thread(target=srv.run_tcp_server, daemon=True)
             t.start()

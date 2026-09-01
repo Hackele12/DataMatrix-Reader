@@ -1,0 +1,80 @@
+
+==========================================================================================
+BILD: SCN-20260820-130950-0021.jpg | SOLL: W031 | 1440x1080
+==========================================================================================
+  YOLO: txt conf=0.938 box=(686,602,845,701)
+  YOLO: dmx conf=0.652 box=(679,402,853,611)
+  scan(): success=False result=Kein Code erkannt. method=Fehler conf=0.0
+  OCR full: text=W031 conf=0.51 partial=W031 raw=W031
+  PACC full: text=B238 conf=0.248
+  TXT crop pad=30: OCR=None conf=0.00 partial=None | PACC=A538 conf=0.252
+  TXT crop pad=60: OCR=None conf=0.00 partial=None | PACC=A538 conf=0.252
+  TXT crop pad=100: OCR=None conf=0.00 partial=None | PACC=A538 conf=0.252
+  TXT crop pad=150: OCR=None conf=0.00 partial=None | PACC=A538 conf=0.252
+  OCR CLAHE: text=B225 conf=0.74 partial=B225
+  OCR Gamma0.4: text=W631 conf=0.47 partial=W631
+  OCR Gamma0.3: text=W031 conf=0.70 partial=W031
+
+==========================================================================================
+BILD: SCN-20260820-131030-0022.jpg | SOLL: W031 | 1440x1080
+==========================================================================================
+  YOLO: txt conf=0.941 box=(687,603,844,701)
+  YOLO: dmx conf=0.680 box=(678,402,853,610)
+  scan(): success=False result=Kein Code erkannt. method=Fehler conf=0.0
+  OCR full: text=None conf=0.00 partial=None raw=None
+  PACC full: text=B539 conf=0.243
+  TXT crop pad=30: OCR=None conf=0.00 partial=None | PACC=A539 conf=0.249
+  TXT crop pad=60: OCR=None conf=0.00 partial=None | PACC=A539 conf=0.249
+  TXT crop pad=100: OCR=None conf=0.00 partial=None | PACC=A539 conf=0.249
+  TXT crop pad=150: OCR=None conf=0.00 partial=None | PACC=A539 conf=0.249
+  OCR CLAHE: text=B225 conf=0.73 partial=B225
+  OCR Gamma0.4: text=None conf=0.00 partial=None
+  OCR Gamma0.3: text=None conf=0.00 partial=None
+
+==========================================================================================
+BILD: SCN-20260820-131052-0023.jpg | SOLL: W031 | 1440x1080
+==========================================================================================
+  YOLO: txt conf=0.945 box=(688,601,846,698)
+  YOLO: dmx conf=0.765 box=(676,400,854,610)
+  scan(): success=False result=Kein Code erkannt. method=Fehler conf=0.0
+  OCR full: text=W631 conf=0.57 partial=W631 raw=W631
+  PACC full: text=B232 conf=0.366
+  TXT crop pad=30: OCR=None conf=0.00 partial=None | PACC=A538 conf=0.350
+  TXT crop pad=60: OCR=None conf=0.00 partial=None | PACC=A538 conf=0.350
+  TXT crop pad=100: OCR=None conf=0.00 partial=None | PACC=A538 conf=0.350
+  TXT crop pad=150: OCR=None conf=0.00 partial=None | PACC=A538 conf=0.350
+  OCR CLAHE: text=B222 conf=0.84 partial=B222
+  OCR Gamma0.4: text=W631 conf=0.48 partial=W631
+  OCR Gamma0.3: text=W631 conf=0.63 partial=W631
+
+==========================================================================================
+BILD: SCN-20260824-130855-0011.jpg | SOLL: W003 | 1440x1080
+==========================================================================================
+  YOLO: txt conf=0.874 box=(344,584,495,682)
+  YOLO: dmx conf=0.578 box=(316,381,493,587)
+  scan(): success=False result=Kein Code erkannt. method=Fehler conf=0.0
+  OCR full: text=None conf=0.00 partial=None raw=None
+  PACC full: text=P224 conf=0.518
+  TXT crop pad=30: OCR=W043 conf=0.55 partial=W043 | PACC=B332 conf=0.477
+  TXT crop pad=60: OCR=W043 conf=0.55 partial=W043 | PACC=B332 conf=0.476
+  TXT crop pad=100: OCR=W043 conf=0.55 partial=W043 | PACC=B332 conf=0.476
+  TXT crop pad=150: OCR=None conf=0.00 partial=None | PACC=A332 conf=0.433
+  OCR CLAHE: text=W003 conf=0.51 partial=W003
+  OCR Gamma0.4: text=None conf=0.00 partial=None
+  OCR Gamma0.3: text=None conf=0.00 partial=None
+
+==========================================================================================
+BILD: train_data_20260820_131044.jpg | SOLL: W031 | 1440x1080
+==========================================================================================
+  YOLO: txt conf=0.952 box=(686,601,846,698)
+  YOLO: dmx conf=0.785 box=(676,400,854,609)
+  scan(): success=False result=Kein Code erkannt. method=Fehler conf=0.0
+  OCR full: text=W631 conf=0.70 partial=W631 raw=W631
+  PACC full: text=B232 conf=0.369
+  TXT crop pad=30: OCR=None conf=0.00 partial=None | PACC=A538 conf=0.339
+  TXT crop pad=60: OCR=None conf=0.00 partial=None | PACC=A538 conf=0.339
+  TXT crop pad=100: OCR=None conf=0.00 partial=None | PACC=A538 conf=0.339
+  TXT crop pad=150: OCR=None conf=0.00 partial=None | PACC=A538 conf=0.339
+  OCR CLAHE: text=B222 conf=0.83 partial=B222
+  OCR Gamma0.4: text=W631 conf=0.63 partial=W631
+  OCR Gamma0.3: text=None conf=0.00 partial=None

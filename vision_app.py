@@ -95,6 +95,8 @@ YOLO = None  # Wird in _start_stream_worker importiert
 # --- Scanner Modul laden ---
 try:
     import scanner
+    from scan_logger import ScanLogger, resolve_log_directory
+    import horde_db
     logger.info("Scanner Modul geladen.")
 except Exception as e:
     logger.error(f"Scanner Importfehler: {e}")
@@ -109,7 +111,7 @@ except Exception as e:
     ScanLogger = None
 
 # --- App-Version ---
-APP_VERSION = "3.3"
+APP_VERSION = "20.0"
 CONFIG_FILE = "config.json"
 
 # --- UI Styling (Light Theme) ---
@@ -444,6 +446,26 @@ class IDSFrameGrabber:
             pass
 
 
+def _check_dual_presence(boxes, dmx_min_conf=0.70, txt_min_conf=0.35, max_gap_ratio=2.5) -> bool:
+    """
+    Prüft VOR dem Auslösen des Auto-Scans, ob mindestens eine Klasse (DataMatrix oder Text)
+    im Bild vorhanden ist.
+    """
+    if boxes is None or len(boxes) == 0:
+        return False
+
+    for b in boxes:
+        cls_id = int(b.cls[0].cpu().item() if hasattr(b.cls[0], 'cpu') else b.cls[0])
+        conf = float(b.conf[0].cpu().item() if hasattr(b.conf[0], 'cpu') else b.conf[0])
+        if cls_id == 0 and conf >= dmx_min_conf:
+            return True
+        elif cls_id == 1 and conf >= txt_min_conf:
+            return True
+
+    return False
+
+
+
 class AIVisionApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -484,6 +506,13 @@ class AIVisionApp(ctk.CTk):
         # --- Config laden (URL Persistenz) ---
         self._config = _load_config()
 
+        # --- TCP Server Attribute VOR _build_ui() definieren ---
+        self.tcp_port = int(self._config.get("tcp_port", 9500))
+        self._tcp_running = False
+        self._tcp_thread = None
+        self._tcp_scan_token = 0
+        self._tcp_scan_lock = threading.Lock()
+
         self.training_dir = "training_data"
         os.makedirs(self.training_dir, exist_ok=True)
 
@@ -505,10 +534,14 @@ class AIVisionApp(ctk.CTk):
         # --- Scan-Logger initialisieren ---
         if ScanLogger is not None:
             master_log_dir = self._config.get("log_dir", r"U:\Temp\DataMatrixReader.logFiles")
-            self.scan_logger = ScanLogger(log_dir=master_log_dir)
+            save_all = self._config.get("save_all_scans", False)
+            self.scan_logger = ScanLogger(log_dir=master_log_dir, save_all_scans=save_all)
         else:
             self.scan_logger = None
             logger.warning("ScanLogger nicht verfügbar — Scan-Logging deaktiviert.")
+
+        # --- TCP Server (Hintergrund-Dienst) starten ---
+        self._start_tcp_server()
 
     # ------------------------------------------------------------------ #
     #  UI Builder                                                          #
@@ -651,26 +684,41 @@ class AIVisionApp(ctk.CTk):
         if self._config.get("auto_scan", False):
             self.auto_scan_enabled = True
             self.auto_scan_switch.select()
-        self.auto_scan_switch.grid(row=13, column=0, padx=20, pady=(6, 6), sticky="w")
+        self.auto_scan_switch.grid(row=13, column=0, padx=20, pady=(6, 2), sticky="w")
+
+        self.save_all_scans_switch = ctk.CTkSwitch(
+            self.sidebar, text="Bilder aller Codes speich.",
+            font=ctk.CTkFont(size=11, weight="bold"), text_color=TXT_DARK,
+            command=self._on_save_all_scans_toggled
+        )
+        if self._config.get("save_all_scans", False):
+            self.save_all_scans_switch.select()
+        self.save_all_scans_switch.grid(row=14, column=0, padx=20, pady=(2, 6), sticky="w")
 
         self.zoom_info_label = ctk.CTkLabel(
             self.sidebar, text="Zoom: 1.0x",
             font=ctk.CTkFont(size=11), text_color=TXT_LIGHT
         )
-        self.zoom_info_label.grid(row=13, column=0, padx=20, pady=(4, 0))
+        self.zoom_info_label.grid(row=15, column=0, padx=20, pady=(0, 0))
+
+        self.tcp_info_label = ctk.CTkLabel(
+            self.sidebar, text=f"TCP Port {self.tcp_port}: AKTIV",
+            font=ctk.CTkFont(size=11, weight="bold"), text_color=SUCCESS
+        )
+        self.tcp_info_label.grid(row=16, column=0, padx=20, pady=(2, 0))
 
         self.status_label = ctk.CTkLabel(
             self.sidebar, text="● Bereit", text_color=TXT_LIGHT,
             font=ctk.CTkFont(size=12)
         )
-        self.status_label.grid(row=14, column=0, padx=20, pady=(20, 4), sticky="s")
+        self.status_label.grid(row=17, column=0, padx=20, pady=(12, 4), sticky="s")
 
         # Lade-Animation (indeterminate progress bar)
         self.loading_bar = ctk.CTkProgressBar(
             self.sidebar, width=190, height=6,
             fg_color=BORDER, progress_color=ACCENT, mode="indeterminate"
         )
-        self.loading_bar.grid(row=15, column=0, padx=20, pady=(0, 16), sticky="s")
+        self.loading_bar.grid(row=18, column=0, padx=20, pady=(0, 16), sticky="s")
         self.loading_bar.grid_remove()  # Versteckt bis zum Laden
 
         # -- Hauptbereich --
@@ -924,6 +972,187 @@ class AIVisionApp(ctk.CTk):
             _save_config(self._config)
         except ValueError:
             pass
+
+    def _on_auto_scan_toggled(self):
+        val = bool(self.auto_scan_switch.get())
+        self.auto_scan_enabled = val
+        self._config["auto_scan"] = val
+        _save_config(self._config)
+        logger.info(f"Auto-Scan Modus geändert: {val}")
+
+    def _on_save_all_scans_toggled(self):
+        val = bool(self.save_all_scans_switch.get())
+        self._config["save_all_scans"] = val
+        _save_config(self._config)
+        if self.scan_logger:
+            self.scan_logger.save_all_scans = val
+        logger.info(f"Bilder-Speicher-Modus: {'ALLE Bilder speichern' if val else 'Nur FEHLER-Bilder speichern'}")
+
+    # ------------------------------------------------------------------ #
+    #  TCP Server (Hintergrund-Dienst)                                    #
+    # ------------------------------------------------------------------ #
+    def _start_tcp_server(self):
+        """Startet den TCP-Server-Thread für externe Netzwerk-Trigger (z. B. '+')."""
+        self._tcp_running = True
+        self._tcp_thread = threading.Thread(target=self._run_tcp_server, daemon=True)
+        self._tcp_thread.start()
+
+    def _run_tcp_server(self):
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            server.bind(('0.0.0.0', self.tcp_port))
+            server.listen(5)
+            logger.info(f"[GUI TCP SERVER] Lauscht auf Port {self.tcp_port}")
+            self.after(0, lambda: self._update_tcp_label(f"TCP Port {self.tcp_port}: AKTIV"))
+        except Exception as e:
+            logger.error(f"[GUI TCP SERVER] Start-Fehler auf Port {self.tcp_port}: {e}")
+            self.after(0, lambda: self._update_tcp_label(f"TCP Port {self.tcp_port}: FEHLER"))
+            return
+
+        while self._tcp_running:
+            try:
+                conn, addr = server.accept()
+                conn.settimeout(1.0)
+                logger.info(f"[GUI TCP SERVER] Client verbunden: {addr}")
+                try:
+                    while self._tcp_running:
+                        try:
+                            data = conn.recv(1024)
+                            if not data:
+                                break
+                            if b"+" in data:
+                                with self._tcp_scan_lock:
+                                    self._tcp_scan_token += 1
+                                    my_token = self._tcp_scan_token
+                                logger.info(f"[GUI TCP SERVER] Trigger '+' (Token {my_token}) empfangen. Starte Auswertung...")
+                                code = self._process_tcp_trigger_scan(token_id=my_token)
+                                if code is not None:
+                                    response_bytes = b"\x02" + code.encode("utf-8") + b"\r\n\x04"
+                                    conn.sendall(response_bytes)
+                                else:
+                                    logger.info(f"[GUI TCP SERVER] Scan (Token {my_token}) wurde verworfen — keine Antwort gesendet.")
+                            else:
+                                conn.sendall(b"\x02ERROR_UNKNOWN_COMMAND\r\n\x04")
+                        except socket.timeout:
+                            continue
+                except Exception as e_c:
+                    logger.error(f"[GUI TCP SERVER] Kommunikationsfehler: {e_c}")
+                finally:
+                    conn.close()
+            except Exception as e_s:
+                if self._tcp_running:
+                    logger.error(f"[GUI TCP SERVER] Server-Loop beendet: {e_s}")
+                break
+        try:
+            server.close()
+        except Exception:
+            pass
+
+    def _update_tcp_label(self, text: str):
+        if hasattr(self, "tcp_info_label"):
+            self.tcp_info_label.configure(text=text)
+
+    def _process_tcp_trigger_scan(self, token_id: int = 0) -> str | None:
+        """Wird aufgerufen wenn per TCP ein Trigger '+' empfangen wird."""
+        cancellation_check = lambda: (token_id > 0 and self._tcp_scan_token != token_id)
+
+        frame = None
+        if self.grabber is not None:
+            frame = self.grabber.get_frame()
+        if frame is None and self._last_frame is not None:
+            frame = self._last_frame.copy()
+
+        if frame is None:
+            logger.error("[GUI TCP SERVER] Kein Kamerabild verfügbar!")
+            return "ERROR_NO_FRAME"
+
+        start_time = time.time()
+        scan_snapshot = frame.copy()
+        scan_frame = scan_snapshot
+        detection_conf = 0.0
+        detection_box = None
+
+        yolo_detections = []
+        use_2class = False
+        if self.model is not None:
+            with self._model_lock:
+                results = self.model.predict(scan_snapshot, conf=0.15, verbose=False)
+            if results and len(results[0].boxes) > 0:
+                for box in results[0].boxes:
+                    cls_id = int(box.cls[0])
+                    conf = float(box.conf[0])
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    if conf > 0.3:
+                        yolo_detections.append({
+                            "cls": cls_id,
+                            "box": (x1, y1, x2, y2),
+                            "conf": conf,
+                        })
+
+                detected_classes = set(d["cls"] for d in yolo_detections)
+                if self._is_2class and (0 in detected_classes or 1 in detected_classes):
+                    use_2class = True
+                    detection_conf = max(d["conf"] for d in yolo_detections) if yolo_detections else 0.0
+                elif yolo_detections:
+                    best_det = max(yolo_detections, key=lambda d: d["conf"])
+                    detection_conf = best_det["conf"]
+                    detection_box = best_det["box"]
+                    scan_frame = scanner.deskew_crop(scan_snapshot, detection_box, padding=60)
+
+        # Abbrechen & Verwerfen falls in der Zwischenzeit ein neuer Trigger empfangen wurde
+        if cancellation_check():
+            logger.warning(f"[GUI TCP SERVER] Scan (Token {token_id}) VOR Auswertung abgebrochen & VERWORFEN!")
+            return None
+
+        if use_2class:
+            result = scanner.scan_2class(scan_snapshot, yolo_detections, cancellation_check=cancellation_check)
+        else:
+            result = scanner.scan(scan_frame, cancellation_check=cancellation_check)
+
+        # Abbrechen & Verwerfen falls während der Auswertung ein neuer Trigger empfangen wurde
+        if cancellation_check() or result.get("cancelled"):
+            logger.warning(f"[GUI TCP SERVER] Scan (Token {token_id}) NACH Auswertung VERWORFEN (neuer Trigger).")
+            return None
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        result["duration_ms"] = duration_ms
+        logger.info(f"[GUI TCP SERVER] Scan fertig ({duration_ms}ms): {result}")
+
+        # Logging (nur für gültige, nicht stornierte Scans)
+        if self.scan_logger is not None:
+            timing_info = {"total_ms": duration_ms, "yolo_ms": 0, "scan_ms": duration_ms}
+            detection_info = {
+                "yolo_conf": detection_conf,
+                "crop_size": [scan_frame.shape[1], scan_frame.shape[0]] if detection_box else None,
+                "label_detected": (use_2class or detection_box is not None),
+            }
+            exp_val = float(self._config.get("last_exposure", 20.0))
+            gain_val = float(self._config.get("last_gain", 1.0))
+            meta_info = {
+                "camera_model": self.grabber.model_name if self.grabber else "",
+                "camera_serial": self.grabber.serial if self.grabber else "",
+                "exposure_us": exp_val * 1000.0,
+                "gain": gain_val,
+                "app_version": APP_VERSION,
+                "port": self.tcp_port,
+                "trigger": "TCP"
+            }
+            self.scan_logger.log_scan(
+                scan_result=result,
+                frame=scan_snapshot,
+                timing=timing_info,
+                detection_info=detection_info,
+                meta=meta_info,
+            )
+
+        # Update GUI live in main thread
+        self.after(0, self._update_result, result)
+
+        if result["success"]:
+            return result["result"]
+        else:
+            return "ERROR"
 
     def _start_stream(self):
         try:
@@ -1205,16 +1434,12 @@ class AIVisionApp(ctk.CTk):
                         results = self.model.predict(display_frame, conf=0.15, verbose=False)
                         self._last_detections = results[0]
 
-                # --- Smart Auto-Scan (Präsenzerkennung) ---
+                # --- Smart Auto-Scan (Präsenzerkennung: DataMatrix ODER Text erkannt) ---
                 if self.auto_scan_enabled and not self._scan_running:
                     has_presence = False
                     with self._model_lock:
                         if self._last_detections is not None and hasattr(self._last_detections, 'boxes'):
-                            for b in self._last_detections.boxes:
-                                conf = float(b.conf[0].cpu().item())
-                                if conf >= 0.45:  # Mindestkonfidenz für Präsenz
-                                    has_presence = True
-                                    break
+                            has_presence = _check_dual_presence(self._last_detections.boxes)
                     
                     if has_presence:
                         self._absence_counter = 0
@@ -1222,7 +1447,7 @@ class AIVisionApp(ctk.CTk):
                             self._presence_counter += 1
                             if self._presence_counter >= 2:  # 2 aufeinanderfolgende Frames stabil
                                 self._presence_state = "SCANNED"
-                                logger.info("Auto-Scan getriggert durch KI-Präsenzerkennung!")
+                                logger.info("Auto-Scan getriggert (DataMatrix oder Text erkannt)!")
                                 self.after(0, self.trigger_scan)
                     else:
                         self._presence_counter = 0
@@ -1412,6 +1637,17 @@ class AIVisionApp(ctk.CTk):
                 meta=meta_info,
             )
 
+        # --- Horden-Datenbank Bildspeicherung (mit Späterkennungs-Schutz) ---
+        if result.get("success") and result.get("result"):
+            is_late = (duration_ms > 6000)
+            horde_db.save_or_update_horde_image(
+                code=result["result"],
+                frame=scan_snapshot,
+                is_late_scan=is_late,
+                verified=result.get("verified", False),
+                confidence=result.get("confidence", 1.0)
+            )
+
         # --- Active Learning: Auto-Save bei unsicherer Erkennung ---
         if result["success"] and detection_box is not None:
             self._scan_counter += 1
@@ -1542,6 +1778,7 @@ class AIVisionApp(ctk.CTk):
         self.status_label.configure(text=text, text_color=color)
 
     def on_closing(self):
+        self._tcp_running = False
         # Session-Statistiken speichern
         if hasattr(self, 'scan_logger') and self.scan_logger is not None:
             self.scan_logger.save_session_summary()

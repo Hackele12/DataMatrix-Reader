@@ -252,13 +252,15 @@ class ScanLogger:
     Prüft die Festplattenauslastung und stoppt bei >70%.
     """
 
-    def __init__(self, log_dir: str = r"U:\Temp\DataMatrixReader.logFiles"):
+    def __init__(self, log_dir: str = r"U:\Temp\DataMatrixReader.logFiles", save_all_scans: bool = False):
         """
         Args:
             log_dir: Basisverzeichnis für Logs und Bilder (wird dynamisch aufgelöst).
+            save_all_scans: Wenn True, werden Kamerabilder für ALLE Scans (auch erfolgreiche) gespeichert.
         """
         self._log_dir = resolve_log_directory(log_dir)
         self._images_dir = os.path.join(self._log_dir, "images")
+        self.save_all_scans = save_all_scans
         self._lock = threading.Lock()
         self._scan_counter = 0
 
@@ -434,7 +436,7 @@ class ScanLogger:
         resolution = None
         success = scan_result.get("success", False)
         is_slow = "SLOW_SCAN" in flags
-        should_save_image = (not success)  # Nur speichern wenn die Horde gar nicht gelesen werden konnte (Error)
+        should_save_image = (not success) or self.save_all_scans  # Fehler-Bild ODER alle Bilder speichern
 
         if frame is not None and should_save_image:
             h, w = frame.shape[:2]

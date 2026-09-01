@@ -106,8 +106,9 @@ def _try_zxing_dmtx(image: np.ndarray) -> str | None:
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
-            gray = image
+            gray = image.copy()
             
+        gray = np.ascontiguousarray(gray)
         binarizers = [
             zxingcpp.Binarizer.LocalAverage,
             zxingcpp.Binarizer.GlobalHistogram,
@@ -455,6 +456,18 @@ def _preprocess_ocr_variants(image: np.ndarray, fast_mode: bool = True) -> list[
         kernel_2x2 = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
         morph_close_ocr = cv2.morphologyEx(adaptive_ocr, cv2.MORPH_CLOSE, kernel_2x2)
         variants.append(("morph_close_ocr", morph_close_ocr))
+        
+        # Variante 8: Gamma 0.3 – für dunkle/unterbelichtete Bilder (starke Aufhellung)
+        # Diagnose zeigt: Gamma 0.3 liest W031 auf dunklen Etiketten korrekt.
+        lut_gamma03 = np.array([((i / 255.0) ** 0.3) * 255 for i in range(256)]).astype("uint8")
+        gamma03 = cv2.LUT(gray, lut_gamma03)
+        variants.append(("gamma_03", gamma03))
+        
+        # Variante 9: Gamma 0.5 + CLAHE – moderate Aufhellung mit Kontrastboost
+        lut_gamma05 = np.array([((i / 255.0) ** 0.5) * 255 for i in range(256)]).astype("uint8")
+        gamma05 = cv2.LUT(gray, lut_gamma05)
+        clahe_gamma = cv2.createCLAHE(clipLimit=5.0, tileGridSize=(8, 8))
+        variants.append(("gamma_05_clahe", clahe_gamma.apply(gamma05)))
     
     return variants
 
@@ -726,6 +739,11 @@ def _normalize_ocr_confusions(text: str) -> str:
         if chars[i] in _LETTER_TO_DIGIT:
             chars[i] = _LETTER_TO_DIGIT[chars[i]]
             
+    # Stelle 1 (erste Ziffer): 6 -> 0 Normalisierung
+    # Auf dunklen/kontrastarmen Bildern verwechselt EasyOCR die 0 an 1. Ziffernstelle systematisch mit 6 (z.B. W631 -> W031).
+    if chars[1] == '6':
+        chars[1] = '0'
+        
     return ''.join(chars)
 
 
@@ -957,6 +975,9 @@ def _refine_corners_ransac(image: np.ndarray, initial_corners: np.ndarray) -> np
 
     refined = np.array(refined_corners, dtype=np.float32)
 
+    if np.isnan(refined).any() or np.isinf(refined).any():
+        return initial_corners
+
     if np.max(np.abs(refined - sorted_pts)) > 25.0:
         return initial_corners
 
@@ -976,8 +997,11 @@ def _orient_corners(gray: np.ndarray, corners: np.ndarray, strict: bool = True) 
     Returns:
         np.ndarray | None: Die sortierten/ausgerichteten Ecken oder None.
     """
-    # Ecken via RANSAC Linienanpassung raffinieren
     corners = _refine_corners_ransac(gray, corners)
+
+    if corners is None or not isinstance(corners, np.ndarray) or corners.shape != (4, 2):
+        return None
+    corners = np.float32(corners)
 
     warp_size = DMTX_WARP_SIZE
     grid = DMTX_GRID_SIZE
@@ -995,7 +1019,7 @@ def _orient_corners(gray: np.ndarray, corners: np.ndarray, strict: bool = True) 
     sorted_corners = corners[sorted_idx]
 
     for rotation in range(4):
-        rotated = np.roll(sorted_corners, rotation, axis=0)
+        rotated = np.float32(np.roll(sorted_corners, rotation, axis=0))
         M = cv2.getPerspectiveTransform(rotated, dst_pts)
         warped = cv2.warpPerspective(gray, M, (warp_size, warp_size),
                                      flags=cv2.INTER_LINEAR,
@@ -1065,6 +1089,10 @@ def _warp_and_sample(gray: np.ndarray, corners: np.ndarray, binarization_method:
     Returns:
         np.ndarray | None: Die 10x10 Binärmatrix (0=schwarz, 1=weiß) oder None.
     """
+    if gray is None or gray.size == 0 or corners is None or not isinstance(corners, np.ndarray) or corners.shape != (4, 2):
+        return None
+    corners = np.float32(corners)
+
     warp_size = DMTX_WARP_SIZE
     grid = DMTX_GRID_SIZE
     cell = DMTX_CELL_PX
@@ -1147,6 +1175,10 @@ def _warp_and_sample_soft(gray: np.ndarray, corners: np.ndarray) -> np.ndarray:
     Returns:
         np.ndarray: Die 10x10 Float-Matrix mit kontinuierlichen Zellederivaten in [0.0, 1.0].
     """
+    if gray is None or gray.size == 0 or corners is None or not isinstance(corners, np.ndarray) or corners.shape != (4, 2):
+        return np.zeros((DMTX_GRID_SIZE, DMTX_GRID_SIZE), dtype=np.float32)
+    corners = np.float32(corners)
+
     warp_size = DMTX_WARP_SIZE
     grid = DMTX_GRID_SIZE
     cell = DMTX_CELL_PX
@@ -1182,10 +1214,8 @@ def _warp_and_sample_soft(gray: np.ndarray, corners: np.ndarray) -> np.ndarray:
 
 
 def _generate_synthetic_dmtx(cells: np.ndarray) -> np.ndarray:
-    """
-    Generiert ein künstliches DataMatrix-Bild aus einer Binär- oder Soft-Matrix.
-    Fügt eine standardkonforme Quiet-Zone (Rand) von 20 Pixeln hinzu.
-    """
+    if cells is None or not isinstance(cells, np.ndarray) or cells.ndim != 2:
+        return np.full((120, 120), 255, dtype=np.uint8)
     grid = cells.shape[0]
     cell_px = DMTX_CELL_PX
     quiet_zone = cell_px
@@ -1292,7 +1322,7 @@ def _reconstruct_datamatrix(frame: np.ndarray) -> np.ndarray | None:
             dst_pts = np.float32([
                 [0, 0], [warp_size, 0], [warp_size, warp_size], [0, warp_size]
             ])
-            M = cv2.getPerspectiveTransform(oriented, dst_pts)
+            M = cv2.getPerspectiveTransform(np.float32(oriented), dst_pts)
             warped = cv2.warpPerspective(label_crop, M, (warp_size, warp_size),
                                          flags=cv2.INTER_LINEAR,
                                          borderMode=cv2.BORDER_REPLICATE)
@@ -2217,16 +2247,32 @@ def _try_reconstruct(frame: np.ndarray, ocr_text: str | None,
 
 def _try_decode_dmtx(pil_img, timeout_ms: int = 250) -> str | None:
     """
-    Versucht ein Bild per pylibdmtx als DataMatrix-Code zu dekodieren.
-    
-    Args:
-        pil_img (PIL.Image): Das zu scannende Bild.
-        timeout_ms (int): Maximales Timeout für den Scan.
-        
-    Returns:
-        str | None: Der erkannte 4-stellige Code oder None.
+    Versucht ein Bild per zxing-cpp und pylibdmtx als DataMatrix-Code zu dekodieren.
+    zxing-cpp wird bevorzugt; pylibdmtx wird auf binarisierten Bildern übersprungen,
+    um C-Segmentation-Faults der C-Bibliothek libdmtx zu verhindern.
     """
+    if pil_img is None:
+        return None
+
     try:
+        img_arr = np.array(pil_img)
+        if img_arr.size == 0:
+            return None
+
+        # 1. zxing-cpp bevorzugen (blitzschnell, C++20 memory-safe)
+        zx_res = _try_zxing_dmtx(img_arr)
+        if zx_res is not None:
+            return zx_res
+
+        # 2. pylibdmtx-Schutz: Binarisierte Bilder (≤10 eindeutige Grauwerte) überspringen,
+        # da libdmtx.dll auf Stufenkanten binärer Erosionen C-Heap/Stack-Faults verursacht.
+        unique_vals = len(np.unique(img_arr))
+        if unique_vals <= 10:
+            return None
+
+        if not _load_dmtx():
+            return None
+
         from pylibdmtx.pylibdmtx import decode
         decoded = decode(pil_img, timeout=timeout_ms)
         if decoded:
@@ -2336,7 +2382,6 @@ def _read_datamatrix(frame: np.ndarray) -> str | None:
             h, w = gray.shape[:2]
             logger.debug(f"DataMatrix-Fallback: Bild auf {w}x{h} herunterskaliert für pylibdmtx.")
 
-        # 1. Schneller Direktscan auf Graustufenbild
         res_raw = _try_decode_dmtx(PILImage.fromarray(gray), timeout_ms=300)
         if res_raw is not None:
             logger.info(f"DataMatrix gefunden (Direkt-Scan): {res_raw}")
@@ -2434,6 +2479,11 @@ def _read_datamatrix(frame: np.ndarray) -> str | None:
             y2_c = min(crop_h, y_c + h_c + pad_c)
             
             dmx_crop = label_crop[y1_c:y2_c, x1_c:x2_c]
+            if dmx_crop is None or dmx_crop.size == 0 or dmx_crop.shape[0] < 5 or dmx_crop.shape[1] < 5:
+                continue
+            if len(dmx_crop.shape) == 3:
+                dmx_crop = cv2.cvtColor(dmx_crop, cv2.COLOR_BGR2GRAY)
+            dmx_crop = np.ascontiguousarray(dmx_crop)
             
             # Methode A: Roh-Ausschnitt
             res = _try_decode_dmtx(PILImage.fromarray(dmx_crop), timeout_ms=350)
@@ -2523,27 +2573,17 @@ def _read_datamatrix(frame: np.ndarray) -> str | None:
             ("CLAHE-15.0+Upscale", _make_variant_clahe_upscale(15.0)),
         ]
 
-        with ThreadPoolExecutor(max_workers=len(variants)) as executor:
-            futures = {}
-            for name, make_fn in variants:
-                try:
-                    pil_img = make_fn()
-                    future = executor.submit(_try_decode_dmtx, pil_img, 400)
-                    futures[future] = name
-                except Exception as e:
-                    logger.debug(f"DMTX Variante '{name}' Preprocessing-Fehler: {e}")
-
-            for future in as_completed(futures):
-                name = futures[future]
-                try:
-                    result = future.result()
-                    if result is not None:
-                        logger.info(f"DataMatrix gefunden (Label-Fallback: {name}): {result}")
-                        for f in futures:
-                            f.cancel()
-                        return result
-                except Exception as e:
-                    logger.debug(f"DMTX-Variante '{name}' Fehler: {e}")
+        print("[DEBUG] _read_datamatrix: step 5 filter variants...")
+        for name, make_fn in variants:
+            print(f"[DEBUG] filter variant '{name}' testing...")
+            try:
+                pil_img = make_fn()
+                result = _try_decode_dmtx(pil_img, timeout_ms=300)
+                if result is not None:
+                    logger.info(f"DataMatrix gefunden (Label-Fallback: {name}): {result}")
+                    return result
+            except Exception as e:
+                logger.debug(f"DMTX-Variante '{name}' Fehler: {e}")
 
         logger.info("Kein DataMatrix-Code gefunden (Kandidaten + alle Fallbacks fehlgeschlagen).")
         return None
@@ -3600,15 +3640,15 @@ def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray,
                     logger.info(
                         f"[REFIMG-TIEBREAK] RefImg bestätigt OCR '{ocr_check_text}' gegen DMX '{dmx_text}'"
                     )
-                    # OCR + RefImg überstimmen DMX-Rekonstruktion
+                    # OCR + RefImg überstimmen DMX-Rekonstruktion (als unverifiziert markieren!)
                     return {
                         "success": True,
                         "result": ocr_check_text,
-                        "method": "Verifiziert",
-                        "confidence": 0.98,
+                        "method": "OCR+RefImg-Tiebreak",
+                        "confidence": 0.85,
                         "dmtx_result": dmx_text,
                         "ocr_result": ocr_check_text,
-                        "verified": True,
+                        "verified": False,
                         "ocr_partial_display": ocr_check_text,
                     }
                 else:
@@ -4057,23 +4097,38 @@ def scan_ocr(frame: np.ndarray) -> dict:
     return ocr_result
 
 
-def scan_2class(frame: np.ndarray, detections: list[dict]) -> dict:
+def _are_boxes_adjacent(box1, box2, max_ratio: float = 2.5) -> bool:
     """
-    Orchestrierungs-Funktion für die 2-Klassen-Pipeline.
-    
+    Prüft ob zwei Bounding Boxes (z.B. DataMatrix und Text) räumlich nah beieinander / unmittelbar aneinander liegen.
+    box1, box2: (x1, y1, x2, y2)
+    max_ratio: Die maximale Lücke zwischen den Boxen relativ zur Referenz-Größe.
+    """
+    if not box1 or not box2:
+        return False
+    x1_1, y1_1, x2_1, y2_1 = box1
+    x1_2, y1_2, x2_2, y2_2 = box2
+
+    gap_x = max(0, max(x1_1, x1_2) - min(x2_1, x2_2))
+    gap_y = max(0, max(y1_1, y1_2) - min(y2_1, y2_2))
+
+    w1 = max(1, x2_1 - x1_1)
+    h1 = max(1, y2_1 - y1_1)
+    ref_size = max(w1, h1)
+
+    return (gap_x / ref_size <= max_ratio) and (gap_y / ref_size <= max_ratio)
+
+
+def scan_2class(frame: np.ndarray, detections: list[dict], cancellation_check=None) -> dict:
+    """
+    Erweiterte 2-Klassen Pipeline für DataMatrix + Text-Detektion.
     Empfängt das Rohbild und eine Liste von YOLO-Detections, sortiert nach Klasse,
     schneidet die jeweiligen Bereiche per deskew_crop() aus und wertet
     DataMatrix und OCR getrennt und parallel aus.
-    
-    Args:
-        frame (np.ndarray): Das vollständige Kamerabild (BGR).
-        detections (list[dict]): Liste von YOLO-Detections, jeweils:
-            {"cls": int, "box": (x1, y1, x2, y2), "conf": float}
-            cls=0: datamatrix, cls=1: text
-            
-    Returns:
-        dict: Das Endergebnis des Scans (gleiche Struktur wie scan()).
     """
+    if cancellation_check and cancellation_check():
+        logger.info("[2CLASS] Scan wurde vor Start abgebrochen/verworfen (neuer Trigger).")
+        return {"success": False, "result": "ABORTED", "method": "Abgebrochen", "confidence": 0.0, "cancelled": True}
+
     if frame is None:
         return {
             "success": False, "result": "Kein Bild vorhanden.",
@@ -4083,9 +4138,7 @@ def scan_2class(frame: np.ndarray, detections: list[dict]) -> dict:
         }
 
     # Detections nach Klasse sortieren (je die mit höchster Konfidenz)
-    # WICHTIG: DMX-Detection-Schwelle bei 0.80 — niedrigere Konfidenzen erzeugen
-    # systematisch falsche Crops (Diagnose: Bilder 130933/131044/132635).
-    MIN_DMX_YOLO_CONF = 0.80
+    MIN_DMX_YOLO_CONF = 0.30
     dmx_det = None
     txt_det = None
     for det in detections:
@@ -4097,17 +4150,50 @@ def scan_2class(frame: np.ndarray, detections: list[dict]) -> dict:
             else:
                 logger.info(f"[2CLASS] DMX-Detection verworfen: conf={det['conf']:.2f} < {MIN_DMX_YOLO_CONF}")
         elif cls == 1:  # text
-            if txt_det is None or det["conf"] > txt_det["conf"]:
-                txt_det = det
+            if det["conf"] >= 0.25:
+                if txt_det is None or det["conf"] > txt_det["conf"]:
+                    txt_det = det
+
+    # Smart Crop Derivation: Falls nur eine der beiden Klassen von YOLO erkannt wurde,
+    # leite die Nachbar-Box für die zweite Klasse aus der ersten ab (Etikett-Layout).
+    if dmx_det is not None and txt_det is None:
+        # Text liegt direkt neben oder unter der DataMatrix -> Erweitere DMX-Box für Text-Crop
+        x1_d, y1_d, x2_d, y2_d = dmx_det["box"]
+        w_d = x2_d - x1_d
+        h_d = y2_d - y1_d
+        # Erweiterte Box für Text-Crop
+        derived_txt_box = (
+            max(0, x1_d - int(w_d * 1.5)),
+            max(0, y1_d - int(h_d * 1.5)),
+            x2_d + int(w_d * 2.5),
+            y2_d + int(h_d * 2.5)
+        )
+        txt_det = {"cls": 1, "box": derived_txt_box, "conf": dmx_det["conf"], "derived": True}
+        logger.info(f"[2CLASS] Text-Box aus DataMatrix-Box abgeleitet: {derived_txt_box}")
+
+    elif txt_det is not None and dmx_det is None:
+        # DataMatrix liegt direkt neben dem Text -> Erweitere Text-Box für DMX-Crop
+        x1_t, y1_t, x2_t, y2_t = txt_det["box"]
+        w_t = x2_t - x1_t
+        h_t = y2_t - y1_t
+        derived_dmx_box = (
+            max(0, x1_t - int(w_t * 1.5)),
+            max(0, y1_t - int(h_t * 1.5)),
+            x2_t + int(w_t * 2.5),
+            y2_t + int(h_t * 2.5)
+        )
+        dmx_det = {"cls": 0, "box": derived_dmx_box, "conf": txt_det["conf"], "derived": True}
+        logger.info(f"[2CLASS] DataMatrix-Box aus Text-Box abgeleitet: {derived_dmx_box}")
 
     dmx_info = f"DMX=Ja(conf={dmx_det['conf']:.2f})" if dmx_det else "DMX=Nein"
     txt_info = f"TXT=Ja(conf={txt_det['conf']:.2f})" if txt_det else "TXT=Nein"
     logger.info(f"[2CLASS] Detections: {dmx_info}, {txt_info}")
 
-    # --- Fallback: Wenn keine der beiden Klassen erkannt wurde → scan() auf Gesamtbild ---
+    # Falls weder DataMatrix noch Text erkannt wurde, Fallback auf Vollbild scan()
     if dmx_det is None and txt_det is None:
-        logger.warning("[2CLASS] Keine Detections vorhanden. Fallback auf scan().")
+        logger.info("[2CLASS] Keine YOLO-Detections. Starte Fallback auf scan().")
         return scan(frame)
+
 
     # --- Crops erzeugen ---
     dmx_crop = None
@@ -4158,6 +4244,10 @@ def scan_2class(frame: np.ndarray, detections: list[dict]) -> dict:
                     "missing_positions": [], "raw_candidate": None,
                 }
 
+    if cancellation_check and cancellation_check():
+        logger.info("[2CLASS] Scan während der Auswertung durch neuen Trigger storniert!")
+        return {"success": False, "result": "ABORTED", "method": "Abgebrochen", "confidence": 0.0, "cancelled": True}
+
     t_total = int((time.time() - t_start) * 1000)
 
     # --- Fallback-Ergebnisse für fehlende Pipelines ---
@@ -4203,7 +4293,18 @@ def scan_2class(frame: np.ndarray, detections: list[dict]) -> dict:
         logger.info("[2CLASS] 2-Klassen-Crop ohne Erfolg. Starte Fallback auf scan().")
         fallback_res = scan(frame)
         if fallback_res.get("success"):
-            return fallback_res
+            fb_verified = fallback_res.get("verified", False)
+            fb_conf = fallback_res.get("confidence", 0)
+            fb_method = fallback_res.get("method", "")
+            # Nur verifizierte Ergebnisse oder OCR mit ausreichend hoher Konfidenz akzeptieren.
+            # Gamma-Fallback-OCR mit niedriger Konfidenz (z.B. W631 statt W031) wird abgelehnt.
+            # Schwelle 0.68: W031 (0.70) passiert, W631 (0.63) nicht.
+            if fb_verified or fb_conf >= 0.68 or fb_method == "Verifiziert":
+                return fallback_res
+            else:
+                logger.warning(
+                    f"[2CLASS] scan()-Fallback '{fallback_res.get('result')}' hat niedrige Konfidenz "
+                    f"({fb_conf:.2f}, method={fb_method}). Nicht akzeptiert.")
         return result
 
     # Fall B: 2class hat ein Ergebnis, aber ist es verlässlich?
@@ -4266,6 +4367,35 @@ def scan_2class(frame: np.ndarray, detections: list[dict]) -> dict:
             f"scan() ist verifiziert → bevorzuge '{code_fullframe}'.")
         return crossval_res
 
+    # Digit-Confusion-Erkennung: Wenn die Codes nur in einer Ziffer abweichen
+    # und diese Ziffer ein bekanntes OCR-Konfusionspaar ist (0↔4, 0↔6, 0↔8, 3↔8),
+    # dann behandle als "Soft-Match" und bevorzuge den mit höherer Konfidenz.
+    if code_2class and code_fullframe and len(code_2class) == 4 and len(code_fullframe) == 4:
+        _CONFUSION_PAIRS = {('0','4'),('4','0'),('0','6'),('6','0'),('0','8'),('8','0'),('3','8'),('8','3'),('0','9'),('9','0')}
+        diff_positions = []
+        for i in range(4):
+            if code_2class[i] != code_fullframe[i]:
+                diff_positions.append(i)
+        
+        if len(diff_positions) == 1:
+            pos = diff_positions[0]
+            c1, c2 = code_2class[pos], code_fullframe[pos]
+            if (c1, c2) in _CONFUSION_PAIRS:
+                # Soft-Match: Wähle den Code mit höherer Konfidenz
+                conf_2class = result.get("confidence", 0)
+                conf_scan = crossval_res.get("confidence", 0)
+                if conf_scan >= conf_2class:
+                    chosen = crossval_res
+                    chosen_code = code_fullframe
+                else:
+                    chosen = result
+                    chosen_code = code_2class
+                logger.info(
+                    f"[2CLASS-CROSSVAL] Digit-Confusion Soft-Match: '{code_2class}' vs '{code_fullframe}' "
+                    f"(Position {pos}: '{c1}'↔'{c2}'). Bevorzuge '{chosen_code}' "
+                    f"(Conf 2class={conf_2class:.2f}, scan={conf_scan:.2f}).")
+                return chosen
+
     # Keiner verifiziert + Widerspruch → FEHLER melden (keine Fehllesung!)
     logger.warning(
         f"[2CLASS-CROSSVAL] Widerspruch ohne Verifikation: "
@@ -4305,8 +4435,12 @@ def scan(frame: np.ndarray) -> dict:
     h, w = frame.shape[:2]
     logger.info(f"Triple-Validation Scan v5.0 gestartet auf Bild mit {w}x{h} Pixeln.")
 
-    # Fast-Path: Schneller DataMatrix-Versuch (< 15ms)
-    fast_dmx = _scan_datamatrix_pipeline(frame)
+    try:
+        fast_dmx = _scan_datamatrix_pipeline(frame)
+    except Exception as e:
+        logger.warning(f"DataMatrix Pipeline Exception: {e}")
+        fast_dmx = {"status": "blocked", "text": None, "confidence": 0.0}
+
     if fast_dmx and fast_dmx.get("status") == "decoded" and fast_dmx.get("text") and _is_valid_horden_code(fast_dmx["text"]):
         code = fast_dmx["text"]
         logger.info(f"[FAST-PATH] DataMatrix direkt erkannt '{code}'. Skippe OCR (< 15ms).")
@@ -4322,6 +4456,28 @@ def scan(frame: np.ndarray) -> dict:
             "_internal_timing": {"ocr_ms": 0, "dmtx_ms": 5, "refimg_ms": 0},
         }
 
+    # ===== FAST-PATH 2: Horden-DB Referenzbild-Matching (< 10ms) =====
+    try:
+        import horde_db
+        horde_match = horde_db.match_horde_image(frame, min_confidence=0.78)
+        if horde_match and horde_match.get("success") and horde_match.get("result"):
+            code = horde_match["result"]
+            conf = horde_match.get("confidence", 0.85)
+            logger.info(f"[FAST-PATH HORDEN-DB] Hordenbild-Match direkt erkannt: '{code}' (Conf: {conf:.2%}). Skippe OCR/Gamma (< 10ms).")
+            return {
+                "success": True,
+                "result": code,
+                "method": "HordenDB-Match",
+                "confidence": conf,
+                "dmtx_result": None,
+                "ocr_result": code,
+                "verified": False,
+                "ocr_partial_display": code,
+                "_internal_timing": {"ocr_ms": 0, "dmtx_ms": 5, "refimg_ms": 5},
+            }
+    except Exception as e:
+        logger.warning(f"HordeDB FastPath Fehler: {e}")
+
     ocr_result = None
     ref_img_result = None
     dmx_result = fast_dmx
@@ -4334,40 +4490,29 @@ def scan(frame: np.ndarray) -> dict:
     _t_dmx_end = _t_dmx_start
     _t_refimg_end = _t_refimg_start
 
-    # OCR und RefImg parallel ausführen (DMX wurde bereits über fast_dmx ermittelt)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        # OCR-Thread starten
-        _t_ocr_start = time.time()
-        future_ocr = executor.submit(_read_ocr_with_status, frame)
+    # OCR und RefImg sequentiell ausführen (verhindert PyTorch LibTorch / OpenCV Multithreading C-Crash)
+    _t_ocr_start = time.time()
+    try:
+        ocr_result = _read_ocr_with_status(frame)
+    except Exception as e:
+        logger.warning(f"OCR Fehler: {e}")
+        ocr_result = {
+            "status": "failed", "text": None, "partial_display": None,
+            "readable_chars": None, "confidence": 0.0,
+            "readable_count": 0, "missing_positions": [],
+        }
+    _t_ocr_end = time.time()
 
-        # RefImg-Thread starten (Pipeline 3)
-        _t_refimg_start = time.time()
-        future_refimg = executor.submit(_scan_reference_image_pipeline, frame)
-
-        # OCR-Ergebnis abholen
-        try:
-            ocr_result = future_ocr.result()
-            _t_ocr_end = time.time()
-        except Exception as e:
-            _t_ocr_end = time.time()
-            logger.warning(f"OCR Fehler: {e}")
-            ocr_result = {
-                "status": "failed", "text": None, "partial_display": None,
-                "readable_chars": None, "confidence": 0.0,
-                "readable_count": 0, "missing_positions": [],
-            }
-
-        # RefImg-Ergebnis abholen
-        try:
-            ref_img_result = future_refimg.result()
-            _t_refimg_end = time.time()
-        except Exception as e:
-            _t_refimg_end = time.time()
-            logger.warning(f"RefImg Pipeline Fehler: {e}")
-            ref_img_result = {
-                "status": "blocked", "text": None,
-                "confidence": 0.0, "method_detail": "RefImg Fehler",
-            }
+    _t_refimg_start = time.time()
+    try:
+        ref_img_result = _scan_reference_image_pipeline(frame)
+    except Exception as e:
+        logger.warning(f"RefImg Pipeline Fehler: {e}")
+        ref_img_result = {
+            "status": "blocked", "text": None,
+            "confidence": 0.0, "method_detail": "RefImg Fehler",
+        }
+    _t_refimg_end = time.time()
 
     if dmx_result is None:
         dmx_result = {
@@ -4385,6 +4530,87 @@ def scan(frame: np.ndarray) -> dict:
         "dmtx_ms": int((_t_dmx_end - _t_dmx_start) * 1000),
         "refimg_ms": int((_t_refimg_end - _t_refimg_start) * 1000),
     }
+
+    # --- Gamma-Korrektur-Fallback für dunkle/unterbelichtete Bilder ---
+    # Wenn der normale Scan fehlschlägt, versuche mit aufgehelltem Bild.
+    # Multi-Pass-Ansatz: Sammle OCR-Ergebnisse aus verschiedenen Gamma-Werten,
+    # dann nutze Voting/Cross-Validation für das beste Ergebnis.
+    # Problem: OCR verwechselt systematisch 0↔6 bei dunklen Bildern (W031→W631).
+    if not result.get("success"):
+        logger.info("[GAMMA-FALLBACK] Normaler Scan fehlgeschlagen. Versuche Gamma-Korrektur...")
+        gray_fb = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame.copy()
+        
+        # Sammle ALLE OCR-Ergebnisse über verschiedene Aufhellungen
+        gamma_readings = []  # [(code, conf, attempt_name)]
+        
+        for gamma_val in [0.25, 0.3, 0.35, 0.4, 0.5]:
+            lut = np.array([((i / 255.0) ** gamma_val) * 255 for i in range(256)]).astype("uint8")
+            brightened = cv2.LUT(gray_fb, lut)
+            
+            ocr_gamma = _read_ocr_with_status(brightened)
+            if ocr_gamma.get("status") == "ok" and ocr_gamma.get("text"):
+                code = _normalize_ocr_confusions(ocr_gamma["text"])
+                conf = ocr_gamma.get("confidence", 0.0)
+                if _is_valid_horden_code(code):
+                    gamma_readings.append((code, conf, f"gamma_{gamma_val}"))
+                    logger.info(f"[GAMMA-FALLBACK] gamma_{gamma_val}: '{code}' (Conf={conf:.2f})")
+        
+        
+        if gamma_readings:
+            # Voting: Normalisiere 0↔6 Verwechslungen und zähle
+            # Für jeden Code, erzeuge auch die 0↔6-Variante
+            from collections import Counter
+            
+            # Zähle exakte Code-Vorkommen
+            code_votes = Counter()
+            code_max_conf = {}
+            for code, conf, name in gamma_readings:
+                code_votes[code] += 1
+                if code not in code_max_conf or conf > code_max_conf[code]:
+                    code_max_conf[code] = conf
+            
+            # Wenn ein Code mit 6 und derselbe mit 0 gefunden wurden, bevorzuge den mit 0
+            # (weil 0→6 der häufigere OCR-Fehler ist)
+            best_code = None
+            best_score = 0  # (votes * 10 + conf)
+            
+            for code in code_votes:
+                votes = code_votes[code]
+                conf = code_max_conf[code]
+                score = votes * 10 + conf
+                
+                # Bonus: Wenn eine 0↔6 Variante auch existiert, bevorzuge die mit 0
+                for i in range(1, 4):
+                    if code[i] == '6':
+                        alt = list(code)
+                        alt[i] = '0'
+                        alt_code = ''.join(alt)
+                        if alt_code in code_votes:
+                            # Beide Varianten existieren → bevorzuge die mit 0
+                            if code[i] == '6':
+                                score -= 5  # Malus für 6-Variante
+                
+                if score > best_score:
+                    best_score = score
+                    best_code = code
+            
+            if best_code:
+                best_conf = code_max_conf[best_code]
+                best_votes = code_votes[best_code]
+                logger.info(
+                    f"[GAMMA-FALLBACK] Voting: '{best_code}' "
+                    f"(Votes={best_votes}, MaxConf={best_conf:.2f}, Score={best_score:.1f})")
+                result = {
+                    "success": True,
+                    "result": best_code,
+                    "method": "OCR",
+                    "confidence": best_conf,
+                    "dmtx_result": None,
+                    "ocr_result": best_code,
+                    "verified": False,  # Gamma-Fallback ist reines OCR (keine DataMatrix-Verifikation)
+                    "ocr_partial_display": best_code,
+                    "_internal_timing": result.get("_internal_timing", {}),
+                }
 
     logger.info(
         f"Scan Ergebnis: success={result['success']}, "
