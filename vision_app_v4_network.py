@@ -146,6 +146,16 @@ class IDSFrameGrabber:
         self.gain = 2.0
         self.last_frame_time = time.time()
 
+        # --- Auto-Exposure Regelschleife ---
+        self.auto_exposure_enabled = False
+        self.auto_exposure_target = 130       # Ziel-Helligkeit (0-255)
+        self.auto_exposure_deadzone = 10      # Toleranz ±
+        self.auto_exposure_min_us = 1000.0     # Min. Belichtung in µs (1ms)
+        self.auto_exposure_max_us = 50000.0    # Max. Belichtung in µs (50ms)
+        self.auto_exposure_max_gain = 12.0     # Max. Gain
+        self._ae_last_time = 0.0               # Letzte Regelung (Throttle)
+        self._current_brightness = 0           # Aktuelle Helligkeit
+
     def start(self) -> bool:
         if not IDS_AVAILABLE:
             logger.error(f"[{self.cam_name}] Start unmöglich: IDS peak SDK fehlt.")
@@ -287,6 +297,10 @@ class IDSFrameGrabber:
                     with self._lock:
                         self.frame = frame
                         self.last_frame_time = time.time()
+
+                    # --- Auto-Exposure: Helligkeit messen und nachregeln ---
+                    if self.auto_exposure_enabled:
+                        self._auto_exposure_step(frame)
                 finally:
                     try:
                         self._ds.QueueBuffer(buffer)
@@ -299,6 +313,62 @@ class IDSFrameGrabber:
     def get_frame(self) -> np.ndarray | None:
         with self._lock:
             return self.frame.copy() if self.frame is not None else None
+
+    def _auto_exposure_step(self, frame: np.ndarray):
+        """
+        Software Auto-Exposure Regelschleife (Fast-Reactive).
+        Misst die mittlere Bildhelligkeit und passt Belichtungszeit und Gain
+        automatisch an, um die Zielhelligkeit zu halten.
+        Priorität: Belichtung zuerst (weniger Rauschen), Gain nur als Backup.
+        Throttle: Maximal alle 40ms (25x pro Sekunde / jedes Frame).
+        """
+        now = time.time()
+        if (now - self._ae_last_time) < 0.04:
+            return
+        self._ae_last_time = now
+
+        try:
+            if len(frame.shape) == 3:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = frame
+            mean_brightness = float(np.mean(gray))
+            self._current_brightness = int(mean_brightness)
+
+            error = self.auto_exposure_target - mean_brightness
+
+            if abs(error) <= self.auto_exposure_deadzone:
+                return
+
+            adjustment = 1.0 + (error / 255.0) * 0.9
+            adjustment = max(0.60, min(1.40, adjustment))
+
+            current_exp = getattr(self, 'exposure_us', 6000.0)
+            current_gain = getattr(self, 'gain', 2.0)
+            min_gain = 1.0
+
+            if error > 0:
+                new_exp = current_exp * adjustment
+                if new_exp <= self.auto_exposure_max_us:
+                    self.set_exposure(new_exp)
+                else:
+                    if current_exp < self.auto_exposure_max_us:
+                        self.set_exposure(self.auto_exposure_max_us)
+                    new_gain = current_gain * adjustment
+                    new_gain = min(new_gain, self.auto_exposure_max_gain)
+                    self.set_gain(new_gain)
+            else:
+                if current_gain > min_gain + 0.1:
+                    new_gain = current_gain * adjustment
+                    new_gain = max(new_gain, min_gain)
+                    self.set_gain(new_gain)
+                else:
+                    new_exp = current_exp * adjustment
+                    new_exp = max(new_exp, self.auto_exposure_min_us)
+                    self.set_exposure(new_exp)
+
+        except Exception as e:
+            logger.debug(f"[{self.cam_name}] Auto-Exposure Fehler: {e}")
 
     def set_exposure(self, exposure_us: float):
         try:
@@ -481,6 +551,17 @@ class CameraService:
         gain_val = float(self.cfg.get("last_gain", 2.0))
         self.grabber.set_exposure(exp_val * 1000.0)
         self.grabber.set_gain(gain_val)
+
+        # Auto-Exposure aus Config initialisieren
+        if self.cfg.get("auto_exposure_enabled", False):
+            self.grabber.auto_exposure_enabled = True
+            self.grabber.auto_exposure_target = int(self.cfg.get("auto_exposure_target", 130))
+            self.grabber.auto_exposure_deadzone = int(self.cfg.get("auto_exposure_deadzone", 10))
+            self.grabber.auto_exposure_min_us = float(self.cfg.get("auto_exposure_min_ms", 1.0)) * 1000.0
+            self.grabber.auto_exposure_max_us = float(self.cfg.get("auto_exposure_max_ms", 50.0)) * 1000.0
+            self.grabber.auto_exposure_max_gain = float(self.cfg.get("auto_exposure_max_gain", 12.0))
+            logger.info(f"[{self.cam_name}] Auto-Exposure aktiviert (Ziel: {self.grabber.auto_exposure_target}/255)")
+
         return True
 
     def process_scan(self, token_id: int = 0) -> str | None:

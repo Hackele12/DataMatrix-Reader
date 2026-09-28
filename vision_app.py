@@ -5,6 +5,7 @@ import ctypes
 import logging
 import threading
 import time
+import socket
 import tkinter as tk
 import customtkinter as ctk
 from PIL import Image, ImageTk
@@ -111,7 +112,7 @@ except Exception as e:
     ScanLogger = None
 
 # --- App-Version ---
-APP_VERSION = "20.0"
+APP_VERSION = "21.0"
 CONFIG_FILE = "config.json"
 
 # --- UI Styling (Light Theme) ---
@@ -170,6 +171,16 @@ class IDSFrameGrabber:
         self.model_name = ""
         self.serial = ""
         self.last_frame_time = time.time()  # Zeitstempel des letzten erfolgreichen Frames
+
+        # --- Auto-Exposure Regelschleife (immer aktiv) ---
+        self.auto_exposure_enabled = True
+        self.auto_exposure_target = 130       # Ziel-Helligkeit (0-255)
+        self.auto_exposure_deadzone = 5        # Hysterese ±5
+        self.auto_exposure_min_us = 1000.0     # Min. Belichtung in µs (1ms)
+        self.auto_exposure_max_us = 50000.0    # Max. Belichtung in µs (50ms)
+        self.auto_exposure_max_gain = 12.0     # Max. Gain
+        self._ae_last_time = 0.0               # Letzte Regelung (Throttle)
+        self._current_brightness = 0           # Aktuelle Helligkeit (für UI)
 
     @staticmethod
     def list_cameras() -> list[dict]:
@@ -359,6 +370,10 @@ class IDSFrameGrabber:
                     with self._lock:
                         self.frame = frame
                         self.last_frame_time = time.time()
+
+                    # --- Auto-Exposure: Helligkeit messen und nachregeln ---
+                    if self.auto_exposure_enabled:
+                        self._auto_exposure_step(frame)
                 finally:
                     # KRITISCH: Buffer IMMER zurückgeben, auch bei Konvertierungsfehler!
                     # Sonst gehen nach wenigen Fehlern alle Buffer verloren und der
@@ -374,6 +389,67 @@ class IDSFrameGrabber:
     def get_frame(self):
         with self._lock:
             return self.frame.copy() if self.frame is not None else None
+
+    def _auto_exposure_step(self, frame: np.ndarray):
+        """
+        Software Auto-Exposure Regelschleife (Fast-Reactive).
+        Misst die mittlere Bildhelligkeit und passt Belichtungszeit und Gain
+        automatisch an, um die Zielhelligkeit zu halten.
+        Priorität: Belichtung zuerst (weniger Rauschen), Gain nur als Backup.
+        Throttle: Maximal alle 40ms (25x pro Sekunde / jedes Frame).
+        """
+        now = time.time()
+        if (now - self._ae_last_time) < 0.04:
+            return  # Throttle: max 25x pro Sekunde
+        self._ae_last_time = now
+
+        try:
+            # Helligkeit messen (Graustufen-Mittelwert)
+            if len(frame.shape) == 3:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = frame
+            mean_brightness = float(np.mean(gray))
+            self._current_brightness = int(mean_brightness)
+
+            error = self.auto_exposure_target - mean_brightness
+
+            # Innerhalb der Totzone (±5) → keine Anpassung nötig
+            if abs(error) <= self.auto_exposure_deadzone:
+                return
+
+            # Schneller Anpassungsfaktor (proportional, max ±40% pro Schritt)
+            adjustment = 1.0 + (error / 255.0) * 0.9
+            adjustment = max(0.60, min(1.40, adjustment))
+
+            current_exp = getattr(self, 'exposure_us', 6000.0)
+            current_gain = getattr(self, 'gain', 1.0)
+            min_gain = 1.0
+
+            if error > 0:
+                # --- Bild zu dunkel: Aufhellen ---
+                new_exp = current_exp * adjustment
+                if new_exp <= self.auto_exposure_max_us:
+                    self.set_exposure(new_exp)
+                else:
+                    if current_exp < self.auto_exposure_max_us:
+                        self.set_exposure(self.auto_exposure_max_us)
+                    new_gain = current_gain * adjustment
+                    new_gain = min(new_gain, self.auto_exposure_max_gain)
+                    self.set_gain(new_gain)
+            else:
+                # --- Bild zu hell: Abdunkeln ---
+                if current_gain > min_gain + 0.05:
+                    new_gain = current_gain * adjustment
+                    new_gain = max(new_gain, min_gain)
+                    self.set_gain(new_gain)
+                else:
+                    new_exp = current_exp * adjustment
+                    new_exp = max(new_exp, self.auto_exposure_min_us)
+                    self.set_exposure(new_exp)
+
+        except Exception as e:
+            logger.debug(f"Auto-Exposure Fehler: {e}")
 
     def set_exposure(self, exposure_us: float):
         """Belichtungszeit in Mikrosekunden setzen (live)."""
@@ -555,7 +631,7 @@ class AIVisionApp(ctk.CTk):
                                     border_width=1, border_color=BORDER)
         self.sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew")
         self.sidebar.grid_propagate(False)
-        self.sidebar.grid_rowconfigure(12, weight=1)
+        self.sidebar.grid_rowconfigure(14, weight=1)
 
         ctk.CTkLabel(
             self.sidebar, text="AI Vision Core",
@@ -591,72 +667,56 @@ class AIVisionApp(ctk.CTk):
         )
         self.cam_refresh_btn.grid(row=0, column=1, sticky="e")
 
-        # -- Kamera Einstellungen --
-        ctk.CTkLabel(self.sidebar, text="Kamera Einstellungen:", anchor="w",
+        # -- Helligkeits-Regelung --
+        ctk.CTkLabel(self.sidebar, text="Helligkeits-Regelung:", anchor="w",
                      font=ctk.CTkFont(weight="bold"), text_color=TXT_DARK
         ).grid(row=4, column=0, padx=20, sticky="w")
 
         self.settings_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        self.settings_frame.grid(row=5, column=0, padx=20, pady=(4, 16), sticky="ew")
+        self.settings_frame.grid(row=5, column=0, padx=20, pady=(4, 10), sticky="ew")
         self.settings_frame.grid_columnconfigure(0, weight=1)
-        self.settings_frame.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(self.settings_frame, text="Belichtung (ms):", font=ctk.CTkFont(size=11), text_color=TXT_DARK).grid(row=0, column=0, sticky="w", pady=2)
-        self.exposure_entry = ctk.CTkEntry(self.settings_frame, width=70, height=24)
-        self.exposure_entry.grid(row=0, column=1, sticky="e", pady=2)
-        saved_exp = self._config.get("last_exposure", 20.0)
-        self.exposure_entry.insert(0, str(saved_exp))
-        self.exposure_entry.bind("<Return>", self._update_camera_settings)
-        self.exposure_entry.bind("<FocusOut>", self._update_camera_settings)
+        saved_pct = self._config.get("auto_exposure_target_pct")
+        if saved_pct is None:
+            saved_target = self._config.get("auto_exposure_target", 130)
+            saved_pct = max(0, min(100, int((saved_target - 40) / 180.0 * 100)))
 
-        ctk.CTkLabel(self.settings_frame, text="Gain:", font=ctk.CTkFont(size=11), text_color=TXT_DARK).grid(row=1, column=0, sticky="w", pady=2)
-        self.gain_entry = ctk.CTkEntry(self.settings_frame, width=70, height=24)
-        self.gain_entry.grid(row=1, column=1, sticky="e", pady=2)
-        saved_gain = self._config.get("last_gain", 1.0)
-        self.gain_entry.insert(0, str(saved_gain))
-        self.gain_entry.bind("<Return>", self._update_camera_settings)
-        self.gain_entry.bind("<FocusOut>", self._update_camera_settings)
+        self.brightness_target_label = ctk.CTkLabel(
+            self.settings_frame, text=f"Ziel-Helligkeit: {int(saved_pct)}%",
+            font=ctk.CTkFont(size=11, weight="bold"), text_color=TXT_DARK, anchor="w"
+        )
+        self.brightness_target_label.grid(row=0, column=0, sticky="w", pady=(0, 2))
 
+        self.brightness_slider = ctk.CTkSlider(
+            self.settings_frame, from_=0, to=100, number_of_steps=100,
+            command=self._on_brightness_slider_changed, width=190
+        )
+        self.brightness_slider.set(saved_pct)
+        self.brightness_slider.grid(row=1, column=0, sticky="ew", pady=(2, 4))
+
+        self.brightness_live_label = ctk.CTkLabel(
+            self.settings_frame, text="☀ Live: --/255",
+            font=ctk.CTkFont(size=10), text_color=TXT_LIGHT, anchor="w"
+        )
+        self.brightness_live_label.grid(row=2, column=0, sticky="w", pady=(0, 2))
+
+        # -- Stream Start / Stop Button --
         self.start_btn = ctk.CTkButton(
             self.sidebar, text="▶  Start Stream", width=190,
             fg_color=ACCENT, hover_color="#1D4ED8",
             font=ctk.CTkFont(size=13, weight="bold"),
             command=self.toggle_stream
         )
-        self.start_btn.grid(row=6, column=0, padx=20, pady=6)
+        self.start_btn.grid(row=6, column=0, padx=20, pady=(4, 8))
 
         ctk.CTkFrame(self.sidebar, height=1, fg_color=BORDER).grid(
-            row=7, column=0, padx=20, pady=12, sticky="ew"
-        )
-
-        # -- Zoom --
-        ctk.CTkLabel(self.sidebar, text="Digital Zoom:", anchor="w",
-                     font=ctk.CTkFont(weight="bold"), text_color=TXT_DARK
-        ).grid(row=6, column=0, padx=20, sticky="w")
-
-        ctk.CTkLabel(self.sidebar,
-                     text="Ziehe ein Rechteck\nim Live-Bild zum Zoomen",
-                     font=ctk.CTkFont(size=11), text_color=TXT_LIGHT,
-                     justify="left"
-        ).grid(row=7, column=0, padx=20, pady=(2, 4), sticky="w")
-
-        self.reset_zoom_btn = ctk.CTkButton(
-            self.sidebar, text="⟳  Zoom Reset", width=190,
-            fg_color=TXT_MID, hover_color="#64748B",
-            font=ctk.CTkFont(size=12),
-            state="disabled",
-            command=self.reset_zoom
-        )
-        self.reset_zoom_btn.grid(row=8, column=0, padx=20, pady=(0, 6))
-
-        ctk.CTkFrame(self.sidebar, height=1, fg_color=BORDER).grid(
-            row=9, column=0, padx=20, pady=12, sticky="ew"
+            row=7, column=0, padx=20, pady=8, sticky="ew"
         )
 
         # -- Aktionen --
         ctk.CTkLabel(self.sidebar, text="Aktionen:", anchor="w",
                      font=ctk.CTkFont(weight="bold"), text_color=TXT_DARK
-        ).grid(row=10, column=0, padx=20, sticky="w")
+        ).grid(row=8, column=0, padx=20, sticky="w")
 
         self.scan_btn = ctk.CTkButton(
             self.sidebar, text="◎  SCAN", width=190,
@@ -665,7 +725,7 @@ class AIVisionApp(ctk.CTk):
             state="disabled",
             command=self.trigger_scan
         )
-        self.scan_btn.grid(row=11, column=0, padx=20, pady=(4, 6))
+        self.scan_btn.grid(row=9, column=0, padx=20, pady=(4, 6))
 
         self.train_capture_btn = ctk.CTkButton(
             self.sidebar, text="◉  Capture (Training)", width=190,
@@ -674,7 +734,7 @@ class AIVisionApp(ctk.CTk):
             state="disabled",
             command=self.capture_training_image
         )
-        self.train_capture_btn.grid(row=12, column=0, padx=20, pady=(0, 6))
+        self.train_capture_btn.grid(row=10, column=0, padx=20, pady=(0, 6))
 
         self.auto_scan_switch = ctk.CTkSwitch(
             self.sidebar, text="Auto-Scan (Präsenz)",
@@ -684,7 +744,7 @@ class AIVisionApp(ctk.CTk):
         if self._config.get("auto_scan", False):
             self.auto_scan_enabled = True
             self.auto_scan_switch.select()
-        self.auto_scan_switch.grid(row=13, column=0, padx=20, pady=(6, 2), sticky="w")
+        self.auto_scan_switch.grid(row=11, column=0, padx=20, pady=(6, 2), sticky="w")
 
         self.save_all_scans_switch = ctk.CTkSwitch(
             self.sidebar, text="Bilder aller Codes speich.",
@@ -693,32 +753,26 @@ class AIVisionApp(ctk.CTk):
         )
         if self._config.get("save_all_scans", False):
             self.save_all_scans_switch.select()
-        self.save_all_scans_switch.grid(row=14, column=0, padx=20, pady=(2, 6), sticky="w")
-
-        self.zoom_info_label = ctk.CTkLabel(
-            self.sidebar, text="Zoom: 1.0x",
-            font=ctk.CTkFont(size=11), text_color=TXT_LIGHT
-        )
-        self.zoom_info_label.grid(row=15, column=0, padx=20, pady=(0, 0))
+        self.save_all_scans_switch.grid(row=12, column=0, padx=20, pady=(2, 6), sticky="w")
 
         self.tcp_info_label = ctk.CTkLabel(
             self.sidebar, text=f"TCP Port {self.tcp_port}: AKTIV",
             font=ctk.CTkFont(size=11, weight="bold"), text_color=SUCCESS
         )
-        self.tcp_info_label.grid(row=16, column=0, padx=20, pady=(2, 0))
+        self.tcp_info_label.grid(row=13, column=0, padx=20, pady=(4, 0))
 
         self.status_label = ctk.CTkLabel(
             self.sidebar, text="● Bereit", text_color=TXT_LIGHT,
             font=ctk.CTkFont(size=12)
         )
-        self.status_label.grid(row=17, column=0, padx=20, pady=(12, 4), sticky="s")
+        self.status_label.grid(row=14, column=0, padx=20, pady=(8, 4), sticky="s")
 
         # Lade-Animation (indeterminate progress bar)
         self.loading_bar = ctk.CTkProgressBar(
             self.sidebar, width=190, height=6,
             fg_color=BORDER, progress_color=ACCENT, mode="indeterminate"
         )
-        self.loading_bar.grid(row=18, column=0, padx=20, pady=(0, 16), sticky="s")
+        self.loading_bar.grid(row=15, column=0, padx=20, pady=(0, 16), sticky="s")
         self.loading_bar.grid_remove()  # Versteckt bis zum Laden
 
         # -- Hauptbereich --
@@ -728,12 +782,8 @@ class AIVisionApp(ctk.CTk):
         self.main_frame.grid_columnconfigure(0, weight=1)
         self.main_frame.grid_rowconfigure(0, weight=1)
 
-        self.canvas = tk.Canvas(self.main_frame, bg="#E2E8F0", highlightthickness=0, cursor="crosshair")
+        self.canvas = tk.Canvas(self.main_frame, bg="#E2E8F0", highlightthickness=0)
         self.canvas.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
-
-        self.canvas.bind("<ButtonPress-1>", self._on_mouse_down)
-        self.canvas.bind("<B1-Motion>", self._on_mouse_drag)
-        self.canvas.bind("<ButtonRelease-1>", self._on_mouse_up)
 
         self.fps_label = ctk.CTkLabel(
             self.main_frame, text="FPS: --",
@@ -786,113 +836,31 @@ class AIVisionApp(ctk.CTk):
         )
         self.auto_train_label.grid(row=2, column=2, padx=(8, 16), pady=(0, 2), sticky="e")
 
+    def _on_brightness_slider_changed(self, val: float):
+        """Wird aufgerufen wenn der Helligkeits-Schieberegler bewegt wird (0-100%)."""
+        pct = int(val)
+        target_br = int(40 + (pct / 100.0) * 180)
+        self.brightness_target_label.configure(text=f"Ziel-Helligkeit: {pct}%")
+        self._config["auto_exposure_target_pct"] = pct
+        self._config["auto_exposure_target"] = target_br
+        _save_config(self._config)
+
+        if self.grabber:
+            self.grabber.auto_exposure_target = target_br
+
     def _on_auto_scan_toggled(self):
         self.auto_scan_enabled = bool(self.auto_scan_switch.get())
         self._config["auto_scan"] = self.auto_scan_enabled
         _save_config(self._config)
         logger.info(f"Auto-Scan Präsenzerkennung gesetzt auf: {self.auto_scan_enabled}")
 
-    # ------------------------------------------------------------------ #
-    #  Maus-Zoom: Rechteck zeichnen                                        #
-    # ------------------------------------------------------------------ #
-    def _on_mouse_down(self, event):
-        """Maus-Klick: Beginn des Rechteck-Zeichnens."""
-        if not self.stream_running:
-            return
-        self._drawing = True
-        self._draw_start = (event.x, event.y)
-        # Altes Rechteck löschen
-        if self._draw_rect_id:
-            self.canvas.delete(self._draw_rect_id)
-            self._draw_rect_id = None
-
-    def _on_mouse_drag(self, event):
-        """Maus wird gezogen: Rechteck live mitzeichnen."""
-        if not self._drawing or not self._draw_start:
-            return
-        if self._draw_rect_id:
-            self.canvas.delete(self._draw_rect_id)
-        x0, y0 = self._draw_start
-        self._draw_rect_id = self.canvas.create_rectangle(
-            x0, y0, event.x, event.y,
-            outline="#3B82F6", width=2, dash=(6, 4)
-        )
-
-    def _on_mouse_up(self, event):
-        """Maus losgelassen: ROI berechnen und Zoom aktivieren."""
-        if not self._drawing or not self._draw_start:
-            return
-        self._drawing = False
-
-        x0_canvas, y0_canvas = self._draw_start
-        x1_canvas, y1_canvas = event.x, event.y
-
-        # Sicherstellen, dass x0 < x1 und y0 < y1
-        x0_canvas, x1_canvas = min(x0_canvas, x1_canvas), max(x0_canvas, x1_canvas)
-        y0_canvas, y1_canvas = min(y0_canvas, y1_canvas), max(y0_canvas, y1_canvas)
-
-        # Zu kleines Rechteck ignorieren (Klick ohne Ziehen)
-        if (x1_canvas - x0_canvas) < 20 or (y1_canvas - y0_canvas) < 20:
-            if self._draw_rect_id:
-                self.canvas.delete(self._draw_rect_id)
-                self._draw_rect_id = None
-            return
-
-        # Canvas-Koordinaten → Original-Bild-Koordinaten umrechnen
-        off_x, off_y = self._display_offset
-        scale = self._display_scale
-
-        if scale <= 0:
-            return
-
-        # Zuerst: Wenn wir bereits einen ROI haben, sind die Koordinaten relativ zum ROI
-        img_x0 = int((x0_canvas - off_x) / scale)
-        img_y0 = int((y0_canvas - off_y) / scale)
-        img_x1 = int((x1_canvas - off_x) / scale)
-        img_y1 = int((y1_canvas - off_y) / scale)
-
-        # Wenn ein ROI bereits gesetzt ist, auf das volle Bild umrechnen
-        if self._roi is not None:
-            roi_x0, roi_y0, _, _ = self._roi
-            img_x0 += roi_x0
-            img_y0 += roi_y0
-            img_x1 += roi_x0
-            img_y1 += roi_y0
-
-        # Begrenzen auf Bildgröße
-        if self._last_frame is not None:
-            fh, fw = self._last_frame.shape[:2]
-            img_x0 = max(0, min(img_x0, fw - 1))
-            img_y0 = max(0, min(img_y0, fh - 1))
-            img_x1 = max(0, min(img_x1, fw))
-            img_y1 = max(0, min(img_y1, fh))
-
-        if (img_x1 - img_x0) < 10 or (img_y1 - img_y0) < 10:
-            return
-
-        self._roi = (img_x0, img_y0, img_x1, img_y1)
-        logger.info(f"ROI gesetzt: {self._roi}")
-
-        # Zoom-Faktor berechnen und anzeigen
-        if self._last_frame is not None:
-            fh, fw = self._last_frame.shape[:2]
-            roi_w = img_x1 - img_x0
-            zoom_factor = fw / roi_w if roi_w > 0 else 1.0
-            self.zoom_info_label.configure(text=f"Zoom: {zoom_factor:.1f}x")
-
-        self.reset_zoom_btn.configure(state="normal")
-
-        # Zeichnungsrechteck entfernen (wird jetzt durch den Zoom ersetzt)
-        if self._draw_rect_id:
-            self.canvas.delete(self._draw_rect_id)
-            self._draw_rect_id = None
-
-    def reset_zoom(self):
-        """Zoom zurücksetzen auf Vollbild."""
-        self._roi = None
-        self.reset_zoom_btn.configure(state="disabled")
-        self.zoom_info_label.configure(text="Zoom: 1.0x")
-        logger.info("Zoom zurückgesetzt.")
+    def _on_save_all_scans_toggled(self):
+        val = bool(self.save_all_scans_switch.get())
+        self._config["save_all_scans"] = val
+        _save_config(self._config)
+        if self.scan_logger:
+            self.scan_logger.save_all_scans = val
+        logger.info(f"Bilder-Speicher-Modus: {'ALLE Bilder speichern' if val else 'Nur FEHLER-Bilder speichern'}")
 
     # ------------------------------------------------------------------ #
     #  Stream Steuerung                                                    #
@@ -957,21 +925,6 @@ class AIVisionApp(ctk.CTk):
             self._stop_stream()
             self.after(500, self._start_stream)
 
-    def _update_camera_settings(self, event=None):
-        if not self.stream_running or not self.grabber:
-            return
-        try:
-            exp_val = float(self.exposure_entry.get())
-            gain_val = float(self.gain_entry.get())
-            self.grabber.set_exposure(exp_val * 1000.0)  # ms -> us
-            self.grabber.set_gain(gain_val)
-            
-            # Save to config
-            self._config["last_exposure"] = exp_val
-            self._config["last_gain"] = gain_val
-            _save_config(self._config)
-        except ValueError:
-            pass
 
     def _on_auto_scan_toggled(self):
         val = bool(self.auto_scan_switch.get())
@@ -1129,6 +1082,10 @@ class AIVisionApp(ctk.CTk):
             }
             exp_val = float(self._config.get("last_exposure", 20.0))
             gain_val = float(self._config.get("last_gain", 1.0))
+            # Bei Auto-Exposure: Tatsächliche Werte vom Grabber verwenden
+            if self.grabber and getattr(self.grabber, 'auto_exposure_enabled', False):
+                exp_val = getattr(self.grabber, 'exposure_us', exp_val * 1000.0) / 1000.0
+                gain_val = getattr(self.grabber, 'gain', gain_val)
             meta_info = {
                 "camera_model": self.grabber.model_name if self.grabber else "",
                 "camera_serial": self.grabber.serial if self.grabber else "",
@@ -1136,7 +1093,8 @@ class AIVisionApp(ctk.CTk):
                 "gain": gain_val,
                 "app_version": APP_VERSION,
                 "port": self.tcp_port,
-                "trigger": "TCP"
+                "trigger": "TCP",
+                "auto_exposure": getattr(self.grabber, 'auto_exposure_enabled', False) if self.grabber else False
             }
             self.scan_logger.log_scan(
                 scan_result=result,
@@ -1155,16 +1113,6 @@ class AIVisionApp(ctk.CTk):
             return "ERROR"
 
     def _start_stream(self):
-        try:
-            exp_val = float(self.exposure_entry.get())
-            gain_val = float(self.gain_entry.get())
-            self._config["last_exposure"] = exp_val
-            self._config["last_gain"] = gain_val
-            _save_config(self._config)
-        except ValueError:
-            self._set_status("Ungültige Werte!", DANGER)
-            return
-
         # UI in Lade-Zustand versetzen
         self.start_btn.configure(state="disabled", text="...Verbinde")
         self._set_status("Lade Modell & Stream...", ACCENT)
@@ -1230,6 +1178,16 @@ class AIVisionApp(ctk.CTk):
                 self.grabber.set_gain(gain_val)
             except Exception:
                 pass
+
+            # Auto-Exposure aus Config initialisieren
+            if self._config.get("auto_exposure_enabled", False):
+                self.grabber.auto_exposure_enabled = True
+                self.grabber.auto_exposure_target = int(self._config.get("auto_exposure_target", 130))
+                self.grabber.auto_exposure_deadzone = int(self._config.get("auto_exposure_deadzone", 10))
+                self.grabber.auto_exposure_min_us = float(self._config.get("auto_exposure_min_ms", 1.0)) * 1000.0
+                self.grabber.auto_exposure_max_us = float(self._config.get("auto_exposure_max_ms", 50.0)) * 1000.0
+                self.grabber.auto_exposure_max_gain = float(self._config.get("auto_exposure_max_gain", 12.0))
+                logger.info("Auto-Exposure beim Stream-Start aktiviert.")
 
             self.after(0, self._on_stream_connected)
 
@@ -1386,6 +1344,14 @@ class AIVisionApp(ctk.CTk):
                             self.grabber.set_gain(gain_val)
                         except Exception:
                             pass
+                        # Auto-Exposure bei Reconnect beibehalten
+                        if self._config.get("auto_exposure_enabled", False):
+                            self.grabber.auto_exposure_enabled = True
+                            self.grabber.auto_exposure_target = int(self._config.get("auto_exposure_target", 130))
+                            self.grabber.auto_exposure_deadzone = int(self._config.get("auto_exposure_deadzone", 10))
+                            self.grabber.auto_exposure_min_us = float(self._config.get("auto_exposure_min_ms", 1.0)) * 1000.0
+                            self.grabber.auto_exposure_max_us = float(self._config.get("auto_exposure_max_ms", 50.0)) * 1000.0
+                            self.grabber.auto_exposure_max_gain = float(self._config.get("auto_exposure_max_gain", 12.0))
                         logger.info("Kamera: Auto-Reconnect erfolgreich!")
                         self.after(0, lambda: self._set_status("● LIVE (wiederverbunden)", SUCCESS))
                         _reconnect_logged = False
@@ -1486,6 +1452,14 @@ class AIVisionApp(ctk.CTk):
                 fps = 1.0 / max(curr - prev_time, 1e-6)
                 prev_time = curr
                 self.after(0, self.fps_label.configure, {"text": f"FPS: {fps:.1f}"})
+
+                # --- Auto-Exposure Helligkeits-Anzeige aktualisieren ---
+                if self.grabber and getattr(self.grabber, 'auto_exposure_enabled', False):
+                    brightness = getattr(self.grabber, '_current_brightness', 0)
+                    exp_ms = getattr(self.grabber, 'exposure_us', 0) / 1000.0
+                    gain_now = getattr(self.grabber, 'gain', 1.0)
+                    self.after(0, self.brightness_live_label.configure,
+                              {"text": f"\u2600 Live: {brightness}/255 | {exp_ms:.1f}ms | G{gain_now:.1f}"})
 
             except Exception as e:
                 logger.error(f"Display-Loop Fehler: {e}")
@@ -1610,17 +1584,8 @@ class AIVisionApp(ctk.CTk):
                 "crop_size": [scan_frame.shape[1], scan_frame.shape[0]] if detection_box else None,
                 "label_detected": detection_box is not None,
             }
-            exp_val = 20.0
-            try:
-                exp_val = float(self.exposure_entry.get())
-            except Exception:
-                exp_val = float(self._config.get("last_exposure", 20.0))
-
-            gain_val = 1.0
-            try:
-                gain_val = float(self.gain_entry.get())
-            except Exception:
-                gain_val = float(self._config.get("last_gain", 1.0))
+            exp_val = getattr(self.grabber, 'exposure_us', 6000.0) / 1000.0 if self.grabber else 6.0
+            gain_val = getattr(self.grabber, 'gain', 1.0) if self.grabber else 1.0
 
             meta_info = {
                 "camera_model": self.grabber.model_name if self.grabber else "",
@@ -1628,6 +1593,7 @@ class AIVisionApp(ctk.CTk):
                 "exposure_us": exp_val * 1000.0,
                 "gain": gain_val,
                 "app_version": APP_VERSION,
+                "auto_exposure": getattr(self.grabber, 'auto_exposure_enabled', False) if self.grabber else False
             }
             self.scan_logger.log_scan(
                 scan_result=result,

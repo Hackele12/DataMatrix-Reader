@@ -4412,6 +4412,114 @@ def scan_2class(frame: np.ndarray, detections: list[dict], cancellation_check=No
     }
 
 
+# --- OCR Konfusionsmatrix: Korrigiert systematische Zeichenverwechslungen ---
+# OCR verwechselt häufig ähnliche Zeichen: 0↔8, 3↔8, 1↔I, 4↔0, 9↔0, 5↔S
+_OCR_CONFUSION_MAP = {
+    '0': ['8', '6', '9'],
+    '8': ['0', '3', '6'],
+    '3': ['8', '9'],
+    '6': ['0', '8'],
+    '9': ['0', '3'],
+    '4': ['0', '1'],
+    '1': ['4', '7'],
+    '5': ['3', '6'],
+    '7': ['1'],
+}
+
+def _ocr_postprocess(code: str, frame: np.ndarray = None) -> str:
+    """
+    Korrigiert OCR-Fehllesungen anhand einer Konfusionsmatrix.
+    
+    Strategie:
+    1. Wenn der Code bereits in horden_db/ als Vorlage existiert → kein Eingriff (Code ist plausibel).
+    2. Wenn der Code NICHT in horden_db/ existiert, aber eine Konfusions-Variante schon →
+       prüfe per Bildabgleich welche Variante besser passt.
+    3. Generiere alle 1-Zeichen-Konfusionsvarianten der 3 Ziffern und matche gegen horden_db/.
+    
+    Args:
+        code: Der OCR-erkannte Code (z.B. "W852")
+        frame: Das Kamerabild für optionalen Bildabgleich
+        
+    Returns:
+        str: Der korrigierte Code (z.B. "W052")
+    """
+    if not code or len(code) != 4 or not _is_valid_horden_code(code):
+        return code
+    
+    try:
+        import horde_db
+        if not horde_db._cache_initialized:
+            horde_db.load_horde_db()
+        
+        cache = horde_db._horde_cache
+        
+        # Wenn der Code schon in der DB existiert → vermutlich korrekt
+        if code.upper() in cache:
+            return code
+        
+        # Generiere alle 1-Zeichen-Konfusionsvarianten der 3 Ziffern
+        prefix = code[0]  # Buchstabe (A/B/P/W)
+        digits = list(code[1:4])  # 3 Ziffern
+        
+        candidates = []
+        for pos in range(3):  # Position 0,1,2 der Ziffern
+            original_digit = digits[pos]
+            if original_digit in _OCR_CONFUSION_MAP:
+                for replacement in _OCR_CONFUSION_MAP[original_digit]:
+                    variant_digits = digits.copy()
+                    variant_digits[pos] = replacement
+                    variant_code = prefix + ''.join(variant_digits)
+                    variant_code = variant_code.upper()
+                    if variant_code in cache and variant_code != code.upper():
+                        candidates.append(variant_code)
+        
+        if not candidates:
+            return code
+        
+        # Wenn genau 1 Kandidat existiert → direkt ersetzen
+        if len(candidates) == 1:
+            corrected = candidates[0]
+            logger.info(
+                f"[OCR-POSTPROCESS] Konfusionskorrektur: '{code}' → '{corrected}' "
+                f"(Vorlage in horden_db/ gefunden)"
+            )
+            return corrected
+        
+        # Mehrere Kandidaten → Bildabgleich als Tiebreaker
+        if frame is not None and len(candidates) > 1:
+            best_candidate = None
+            best_corr = -1.0
+            
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame.copy()
+            resized = cv2.resize(gray, (320, 320), interpolation=cv2.INTER_AREA)
+            
+            for cand in candidates:
+                if cand in cache and cache[cand].get("gray") is not None:
+                    res = cv2.matchTemplate(resized, cache[cand]["gray"], cv2.TM_CCOEFF_NORMED)
+                    corr = float(res[0][0]) if res is not None else 0.0
+                    if corr > best_corr:
+                        best_corr = corr
+                        best_candidate = cand
+            
+            if best_candidate and best_corr > 0.3:
+                logger.info(
+                    f"[OCR-POSTPROCESS] Konfusionskorrektur (Bildabgleich): '{code}' → '{best_candidate}' "
+                    f"(Korrelation={best_corr:.2f}, {len(candidates)} Kandidaten)"
+                )
+                return best_candidate
+        
+        # Fallback: Erster Kandidat
+        corrected = candidates[0]
+        logger.info(
+            f"[OCR-POSTPROCESS] Konfusionskorrektur (Fallback): '{code}' → '{corrected}'"
+        )
+        return corrected
+        
+    except Exception as e:
+        logger.debug(f"[OCR-POSTPROCESS] Fehler: {e}")
+        return code
+
+
 def scan(frame: np.ndarray) -> dict:
     """
     Haupt-Scan-Funktion mit Triple-Validation (v5.0).
@@ -4459,7 +4567,7 @@ def scan(frame: np.ndarray) -> dict:
     # ===== FAST-PATH 2: Horden-DB Referenzbild-Matching (< 10ms) =====
     try:
         import horde_db
-        horde_match = horde_db.match_horde_image(frame, min_confidence=0.78)
+        horde_match = horde_db.match_horde_image(frame, min_confidence=0.88)
         if horde_match and horde_match.get("success") and horde_match.get("result"):
             code = horde_match["result"]
             conf = horde_match.get("confidence", 0.85)
@@ -4611,6 +4719,20 @@ def scan(frame: np.ndarray) -> dict:
                     "ocr_partial_display": best_code,
                     "_internal_timing": result.get("_internal_timing", {}),
                 }
+
+    # --- OCR-Postprocessing: Konfusionsmatrix-Korrektur ---
+    # Korrigiert systematische Zeichenverwechslungen (z.B. W852 → W052)
+    # wenn eine Horden-DB Vorlage für die korrigierte Variante existiert.
+    if result.get("success") and result.get("result") and not result.get("verified", False):
+        original_code = result["result"]
+        corrected_code = _ocr_postprocess(original_code, frame)
+        if corrected_code != original_code:
+            result["result"] = corrected_code
+            result["ocr_result"] = corrected_code
+            result["ocr_partial_display"] = corrected_code
+            # Konfidenz leicht senken da Postprocessing, aber als "korrigiert" markieren
+            result["_ocr_postprocessed"] = True
+            result["_ocr_original"] = original_code
 
     logger.info(
         f"Scan Ergebnis: success={result['success']}, "

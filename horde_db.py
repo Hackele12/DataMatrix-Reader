@@ -201,6 +201,11 @@ def match_horde_image(frame: np.ndarray, min_confidence: float = 0.70) -> dict |
     best_code = None
     best_score = 0.0
     second_score = 0.0
+    best_hist_score = 0.0
+
+    # Histogram des Eingabebilds für Bhattacharyya-Distanz
+    hist_input = cv2.calcHist([resized], [0], None, [64], [0, 256])
+    cv2.normalize(hist_input, hist_input)
 
     for code, data in cache_copy.items():
         db_des = data.get("orb_des")
@@ -216,6 +221,10 @@ def match_horde_image(frame: np.ndarray, min_confidence: float = 0.70) -> dict |
                 if m.distance < 0.75 * n.distance:
                     good_matches += 1
 
+        # Mindestens 15 gute Feature-Matches erforderlich
+        if good_matches < 15:
+            continue
+
         # Score berechnen (Verhältnis gute Matches zu Gesamt-Features + Vorlagen-Korrelation)
         feat_ratio = good_matches / max(min(len(des_input), len(db_des)), 1)
 
@@ -224,24 +233,36 @@ def match_horde_image(frame: np.ndarray, min_confidence: float = 0.70) -> dict |
         template_corr = float(res_match[0][0]) if res_match is not None else 0.0
         template_score = max(0.0, template_corr)
 
-        # Gesamte Konfidenz kombiniert (Template Match präferieren für Text/Struktur-Etiketten)
-        combined_score = max(template_score, (feat_ratio * 0.4) + (template_score * 0.6))
+        # Histogram-Vergleich (Bhattacharyya-Distanz, niedrig = ähnlich)
+        hist_db = cv2.calcHist([data["gray"]], [0], None, [64], [0, 256])
+        cv2.normalize(hist_db, hist_db)
+        hist_dist = cv2.compareHist(hist_input, hist_db, cv2.HISTCMP_BHATTACHARYYA)
+        hist_similarity = max(0.0, 1.0 - hist_dist)
+
+        # Gesamte Konfidenz: Gewichtete Kombination aller 3 Metriken
+        combined_score = (feat_ratio * 0.3) + (template_score * 0.4) + (hist_similarity * 0.3)
 
         if combined_score > best_score:
             second_score = best_score
             best_score = combined_score
             best_code = code
+            best_hist_score = hist_similarity
         elif combined_score > second_score:
             second_score = combined_score
 
     dt_ms = int((time.time() - t0) * 1000)
 
-    # Mindestanforderung an Konfidenz und Abstand zum zweitbesten Kandidaten (Margin)
+    # VERSCHÄRFTE Mindestanforderungen:
+    # 1. Mindest-Konfidenz: 0.88 (vorher 0.78)
+    # 2. Mindest-Margin: 0.15 (vorher 0.05) - deutlich größerer Abstand zum Zweitbesten
+    # 3. Histogram-Ähnlichkeit muss mindestens 0.5 sein
     margin = best_score - second_score
-    if best_code and best_score >= min_confidence and (margin >= 0.05 or best_score >= 0.85):
+    if (best_code and best_score >= min_confidence 
+            and margin >= 0.15 
+            and best_hist_score >= 0.5):
         logger.info(
             f"[HORDEN-DB MATCH] Horde '{best_code}' erfolgreich per Bildabgleich erkannt! "
-            f"(Score={best_score:.2f}, Margin={margin:.2f}, Dauer={dt_ms}ms)"
+            f"(Score={best_score:.2f}, Margin={margin:.2f}, HistSim={best_hist_score:.2f}, Dauer={dt_ms}ms)"
         )
         return {
             "success": True,
@@ -250,10 +271,10 @@ def match_horde_image(frame: np.ndarray, min_confidence: float = 0.70) -> dict |
             "confidence": min(1.0, best_score),
             "dmtx_result": None,
             "ocr_result": None,
-            "verified": True,
+            "verified": False,  # Bildabgleich ist NIEMALS verifiziert (keine mathematische Garantie)
             "ocr_partial_display": best_code,
             "_horde_db_matched": True,
         }
 
-    logger.debug(f"[HORDEN-DB MATCH] Kein eindeutiger Bildabgleich-Treffer (Bester: {best_code} mit Score={best_score:.2f}, Dauer={dt_ms}ms).")
+    logger.debug(f"[HORDEN-DB MATCH] Kein eindeutiger Bildabgleich-Treffer (Bester: {best_code} mit Score={best_score:.2f}, Margin={margin:.2f}, Dauer={dt_ms}ms).")
     return None
