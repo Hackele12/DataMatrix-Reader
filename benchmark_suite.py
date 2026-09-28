@@ -150,13 +150,21 @@ def _load_yolo_model():
         return None
 
     app_dir = os.path.dirname(os.path.abspath(__file__))
-    trained_path = os.path.join(
+    path_2class = os.path.join(
+        app_dir, "runs", "detect", "training_runs_v2",
+        "horde_2class", "weights", "best.pt"
+    )
+    if os.path.exists(path_2class):
+        logger.info(f"Lade trainiertes 2-Klassen YOLO-Modell: {path_2class}")
+        return YOLO(path_2class)
+
+    path_1class = os.path.join(
         app_dir, "runs", "detect", "training_runs",
         "horde_model", "weights", "best.pt"
     )
-    if os.path.exists(trained_path):
-        logger.info(f"Lade trainiertes YOLO-Modell: {trained_path}")
-        return YOLO(trained_path)
+    if os.path.exists(path_1class):
+        logger.info(f"Lade trainiertes 1-Klassen YOLO-Modell: {path_1class}")
+        return YOLO(path_1class)
 
     base_path = os.path.join(app_dir, "yolov10n.pt")
     if os.path.exists(base_path):
