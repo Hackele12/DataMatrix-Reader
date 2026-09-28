@@ -9,7 +9,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # --- Standard-Verzeichnis für den Horden-Zusatzordner ---
-DEFAULT_HORDE_DB_DIR = "horden_db"
+DEFAULT_HORDE_DB_DIR = "hard_scans_cache"
 _HORDEN_PATTERN = re.compile(r"^[ABPW][0-9]{3}$", re.IGNORECASE)
 
 _db_lock = threading.Lock()

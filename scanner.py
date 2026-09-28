@@ -4431,10 +4431,10 @@ def _ocr_postprocess(code: str, frame: np.ndarray = None) -> str:
     Korrigiert OCR-Fehllesungen anhand einer Konfusionsmatrix.
     
     Strategie:
-    1. Wenn der Code bereits in horden_db/ als Vorlage existiert → kein Eingriff (Code ist plausibel).
-    2. Wenn der Code NICHT in horden_db/ existiert, aber eine Konfusions-Variante schon →
+    1. Wenn der Code bereits in hard_scans_cache/ als Vorlage existiert → kein Eingriff (Code ist plausibel).
+    2. Wenn der Code NICHT in hard_scans_cache/ existiert, aber eine Konfusions-Variante schon →
        prüfe per Bildabgleich welche Variante besser passt.
-    3. Generiere alle 1-Zeichen-Konfusionsvarianten der 3 Ziffern und matche gegen horden_db/.
+    3. Generiere alle 1-Zeichen-Konfusionsvarianten der 3 Ziffern und matche gegen hard_scans_cache/.
     
     Args:
         code: Der OCR-erkannte Code (z.B. "W852")
@@ -4481,7 +4481,7 @@ def _ocr_postprocess(code: str, frame: np.ndarray = None) -> str:
             corrected = candidates[0]
             logger.info(
                 f"[OCR-POSTPROCESS] Konfusionskorrektur: '{code}' → '{corrected}' "
-                f"(Vorlage in horden_db/ gefunden)"
+                f"(Vorlage in hard_scans_cache/ gefunden)"
             )
             return corrected
         
