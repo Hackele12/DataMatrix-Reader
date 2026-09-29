@@ -1,84 +1,122 @@
 @echo off
-title DataDetector v20 - Automatisches Setup
+setlocal EnableExtensions
+title DataDetector v23 - Setup
 cd /d "%~dp0"
+set "PYTHONUTF8=1"
 
 echo ============================================================
-echo  DataDetector v20 - Installation der Abhängigkeiten
+echo  DataDetector v23 - Einrichtung
 echo ============================================================
 echo.
 
-:: Prüfen auf temporäre oder zu lange Pfade
-echo %~dp0 | findstr /i "AppData\Local\Temp" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [HINWEIS] Das Programm wird aus einem temporaeren Pfad ausgefuehrt.
-    echo Um Windows-Pfadlaengen-Fehler zu vermeiden, wird empfohlen,
-    echo den Ordner nach C:\DataDetector zu verschieben.
-    echo.
-)
-
-:: Prüfen, ob Python oder py im Pfad ist
-set "PYTHON_CMD="
-python --version >nul 2>&1
-if %errorlevel% equ 0 (
-    set "PYTHON_CMD=python"
-) else (
-    py --version >nul 2>&1
-    if %errorlevel% equ 0 (
-        set "PYTHON_CMD=py"
-    )
-)
-
-if "%PYTHON_CMD%"=="" (
-    echo [FEHLER] Python wurde auf diesem PC nicht gefunden!
-    echo Bitte stelle sicher, dass Python installiert ist und bei der
-    echo Installation das Haeckchen bei "Add Python to PATH" gesetzt wurde.
+if not exist "scanner.py" (
+    echo [FEHLER] Programmdateien nicht gefunden.
+    echo Bitte die ZIP-Datei zuerst vollstaendig entpacken ^(Rechtsklick - Alle extrahieren^)
+    echo und setup.bat im entpackten Ordner starten.
     echo.
     pause
-    exit /b
+    exit /b 1
 )
 
-:: 1. Virtuelle Umgebung erstellen
-if not exist ".venv" (
-    echo [1/3] Erstelle virtuelle Umgebung venv...
-    %PYTHON_CMD% -m venv .venv
-    if %errorlevel% neq 0 (
-        echo [FEHLER] Konnte virtuelle Umgebung nicht erstellen.
+set "CUR_DIR=%CD%\"
+if /i not "%CUR_DIR:\AppData\Local\Temp\=%"=="%CUR_DIR%" (
+    echo [HINWEIS] Der Ordner liegt in einem temporaeren Verzeichnis.
+    echo           Empfehlung: nach z.B. C:\DataDetector verschieben und setup.bat dort starten.
+    echo.
+)
+
+:: Python-Laufzeit: mitgelieferte Version bevorzugen (die Offline-Pakete sind fuer Python 3.14 gebaut)
+set "BASE_PY="
+if exist "python_runtime\python.exe" set "BASE_PY=python_runtime\python.exe"
+if not defined BASE_PY py -3.14 -c "import sys" >nul 2>&1 && set "BASE_PY=py -3.14"
+if not defined BASE_PY python -c "import sys; sys.exit(sys.version_info[:2] != (3, 14))" >nul 2>&1 && set "BASE_PY=python"
+if not defined BASE_PY (
+    echo [FEHLER] Keine Python-Laufzeit gefunden.
+    echo Der Ordner "python_runtime" fehlt - bitte die ZIP-Datei vollstaendig entpacken.
+    echo.
+    pause
+    exit /b 1
+)
+echo [INFO] Python-Laufzeit: %BASE_PY%
+
+:: 1. Virtuelle Umgebung (defekte oder falsche Version, z.B. nach Verschieben des Ordners, wird neu erstellt)
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" -c "import sys; sys.exit(sys.version_info[:2] != (3, 14))" >nul 2>&1
+    if errorlevel 1 (
+        echo [INFO] Vorhandene .venv ist nicht lauffaehig - wird neu erstellt.
+        rmdir /s /q ".venv"
+    )
+)
+if not exist ".venv\Scripts\python.exe" (
+    echo [1/4] Erstelle virtuelle Umgebung .venv ...
+    %BASE_PY% -m venv .venv
+    if errorlevel 1 (
+        echo [FEHLER] Virtuelle Umgebung konnte nicht erstellt werden.
+        echo.
         pause
-        exit /b
+        exit /b 1
     )
 ) else (
-    echo [1/3] Virtuelle Umgebung venv existiert bereits.
+    echo [1/4] Virtuelle Umgebung .venv ist vorhanden.
 )
+set "VENV_PY=.venv\Scripts\python.exe"
 
-:: 2. Pip und Abhängigkeiten installieren
-echo [2/3] Installiere Bibliotheken...
-call ".venv\Scripts\activate.bat"
-
-if exist "packages" (
-    echo [INFO] Offline-Modus: Installiere Bibliotheken lokal aus dem Ordner 'packages'...
-    python -m pip install --no-index --find-links=packages -r requirements.txt
+:: 2. Bibliotheken installieren
+set "OFFLINE=0"
+if exist "requirements_lock.txt" if exist "packages\" set "OFFLINE=1"
+if "%OFFLINE%"=="1" (
+    echo [2/4] Installiere Bibliotheken offline aus "packages" - das dauert einige Minuten ...
+    "%VENV_PY%" -m pip install --no-index --find-links packages -r requirements_lock.txt --disable-pip-version-check --no-warn-script-location
 ) else (
-    echo [INFO] Online-Modus: Versuche Online-Download aus dem Internet...
-    echo (Dies kann je nach Internetverbindung 1-2 Minuten dauern)
-    python -m pip install --upgrade pip
-    python -m pip install -r requirements.txt
+    echo [2/4] Kein Offline-Paketordner gefunden - installiere online aus dem Internet ...
+    "%VENV_PY%" -m pip install -r requirements.txt --disable-pip-version-check --no-warn-script-location
 )
-
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo.
-    echo [FEHLER] Installation der Bibliotheken fehlgeschlagen!
-    echo.
-    echo TIPP bei Pfadlaengen-Fehler - WinError 206:
-    echo Verschiebe/Entpacke das Projekt in ein kurzes Verzeichnis - z.B. C:\DataDetector
-    echo und starte setup.bat erneut.
+    echo [FEHLER] Installation der Bibliotheken fehlgeschlagen.
+    echo TIPP bei Pfadlaengen-Fehler - WinError 206: Ordner in ein kurzes Verzeichnis
+    echo wie C:\DataDetector verschieben und setup.bat erneut starten.
     echo.
     pause
-    exit /b
+    exit /b 1
+)
+
+:: opencv-python und opencv-python-headless liefern beide "cv2" - die Vollversion zuletzt installieren
+set "OPENCV_PIN="
+if "%OFFLINE%"=="1" for /f "usebackq delims=" %%L in (`findstr /b /i /c:"opencv-python==" requirements_lock.txt`) do set "OPENCV_PIN=%%L"
+if defined OPENCV_PIN (
+    "%VENV_PY%" -m pip install --no-index --find-links packages --force-reinstall --no-deps "%OPENCV_PIN%" --disable-pip-version-check -q
+    if errorlevel 1 (
+        echo [FEHLER] OpenCV konnte nicht installiert werden.
+        echo.
+        pause
+        exit /b 1
+    )
+)
+
+:: 3. Pruefung
+echo [3/4] Pruefe Installation ...
+"%VENV_PY%" -c "import cv2, numpy, torch, ultralytics, easyocr, zxingcpp, onnxruntime, customtkinter, tkinter, setuptools; from pylibdmtx import pylibdmtx; import scanner; print('      OpenCV', cv2.__version__, '/ Torch', torch.__version__, '/ Ultralytics', ultralytics.__version__)"
+if errorlevel 1 (
+    echo [FEHLER] Pruefung der Bibliotheken fehlgeschlagen - siehe Meldung oben.
+    echo.
+    pause
+    exit /b 1
+)
+"%VENV_PY%" -c "from ids_peak import ids_peak; from ids_peak_ipl import ids_peak_ipl" >nul 2>&1
+if errorlevel 1 (
+    echo [HINWEIS] IDS-Kamerabibliothek nicht ladbar. Fuer den Kamerabetrieb muss die
+    echo           Software "IDS peak" auf diesem PC installiert sein.
 )
 
 echo.
-echo [3/3] Setup erfolgreich abgeschlossen!
-echo Sie koennen das Programm jetzt ueber "Start_DataDetector.bat" oder "Start_DataDetector_v4_Network.bat" starten.
+echo [4/4] Setup erfolgreich abgeschlossen.
+echo.
+echo Programme starten mit:
+echo   Start_DataDetector.bat              Kamera-App
+echo   Start_DataDetector_v4_Network.bat   Multi-Kamera TCP-Server
+echo   Start_Benchmark.bat                 Benchmark und Ground-Truth
+echo   Start_LogAnalyzer.bat               Log-Auswertung
 echo.
 pause
 

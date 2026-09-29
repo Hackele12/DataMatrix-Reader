@@ -12,3 +12,5 @@ customtkinter
 zxing-cpp
 onnx
 onnxruntime
+setuptools
+pystrich

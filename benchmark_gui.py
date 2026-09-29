@@ -3,7 +3,7 @@ benchmark_gui.py — Interaktives Benchmark & Ground-Truth-Annotationstool
 für DataDetector.
 
 Features:
-  1. Übersicht aller Testbilder aus training_data/
+  1. Übersicht aller Testbilder aus training_data/ (oder --images <Ordner> --gt <datei.json>)
   2. Ground-Truth-Editor: Bild-für-Bild den tatsächlichen Code annotieren
   3. Benchmark starten mit Fortschrittsbalken
   4. Detaillierte Ergebnis-Analyse (Erfolgsrate, Genauigkeit, Fehlerverteilung)
@@ -15,6 +15,7 @@ import sys
 import json
 import time
 import glob
+import argparse
 import logging
 import threading
 from datetime import datetime
@@ -46,7 +47,7 @@ except Exception as e:
 
 # --- Pfade ---
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-TRAINING_DATA_DIR = os.path.join(APP_DIR, "training_data")
+IMAGE_DIR = os.path.join(APP_DIR, "training_data")
 GROUND_TRUTH_PATH = os.path.join(APP_DIR, "ground_truth.json")
 
 # --- Farben (Dark Theme) ---
@@ -134,11 +135,11 @@ def save_ground_truth(gt_map: dict):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def load_image_list() -> list[str]:
-    """Lädt alle Bilder aus training_data/."""
+    """Lädt alle Bilder aus IMAGE_DIR."""
     patterns = ["*.jpg", "*.jpeg", "*.png", "*.bmp"]
     files = []
     for pat in patterns:
-        files.extend(glob.glob(os.path.join(TRAINING_DATA_DIR, pat)))
+        files.extend(glob.glob(os.path.join(IMAGE_DIR, pat)))
     return sorted(files)
 
 
@@ -397,7 +398,7 @@ class BenchmarkApp(ctk.CTk):
 
         # Bild-Grid (Thumbnails)
         grid_label = ctk.CTkLabel(
-            frame, text="Bildvorschau  (training_data/)",
+            frame, text=f"Bildvorschau  ({os.path.basename(IMAGE_DIR)}/)",
             font=("Segoe UI Semibold", 16), text_color=TEXT_PRIMARY,
         )
         grid_label.pack(anchor="w", padx=30, pady=(20, 8))
@@ -755,7 +756,7 @@ class BenchmarkApp(ctk.CTk):
             f"📁  {n} Bilder werden evaluiert",
             f"✅  {n_gt} Ground-Truth-Einträge verfügbar",
             f"🤖  Pipeline: YOLO-Detektion → DataMatrix + OCR → Triple-Validation",
-            f"📍  Quelle: training_data/",
+            f"📍  Quelle: {IMAGE_DIR}",
         ]
         for item in info_items:
             ctk.CTkLabel(
@@ -870,6 +871,7 @@ class BenchmarkApp(ctk.CTk):
 
         success_count = 0
         accuracy_count = 0
+        false_read_count = 0
         total_gt = 0
         total_ms = 0
         failure_cats = {}
@@ -922,6 +924,8 @@ class BenchmarkApp(ctk.CTk):
                 if is_success and result_code == expected:
                     is_match = True
                     accuracy_count += 1
+                elif is_success:
+                    false_read_count += 1
 
             if is_success:
                 success_count += 1
@@ -995,6 +999,8 @@ class BenchmarkApp(ctk.CTk):
             "accuracy_count": accuracy_count,
             "accuracy_total_gt": total_gt,
             "accuracy_pct": round(accuracy_pct, 1),
+            "false_read_count": false_read_count,
+            "no_read_count": len(results) - success_count,
             "avg_duration_ms": round(avg_ms, 1),
             "total_time_s": round(total_time, 1),
             "method_distribution": method_dist,
@@ -1006,11 +1012,13 @@ class BenchmarkApp(ctk.CTk):
         # Report speichern (mit Datum, Zeit & Version)
         now_dt = datetime.now()
         timestamp_str = now_dt.strftime("%Y-%m-%d_%H-%M-%S")
-        version_str = "2.2.0"
+        version_str = "2.3.0"
 
         report = {
             "version": version_str,
             "timestamp": now_dt.isoformat(),
+            "image_dir": IMAGE_DIR,
+            "ground_truth_file": GROUND_TRUTH_PATH,
             "summary": self.benchmark_summary,
             "details": [{k: v for k, v in r.items() if k != "scan_res"} for r in results],
         }
@@ -1037,6 +1045,8 @@ class BenchmarkApp(ctk.CTk):
             f"  Bilder:         {total}",
             f"  Erfolgsrate:    {success_count}/{total} ({success_pct:.1f}%)",
             f"  Genauigkeit GT: {accuracy_count}/{total_gt} ({accuracy_pct:.1f}%)",
+            f"  Falsch gelesen: {false_read_count}",
+            f"  Nicht gelesen:  {len(results) - success_count}",
             f"  Ø Dauer/Bild:   {avg_ms:.0f} ms",
             f"  Gesamtzeit:     {total_time:.1f}s",
             f"{'═' * 60}",
@@ -1125,6 +1135,8 @@ class BenchmarkApp(ctk.CTk):
              ACCENT_SUCCESS if s['success_rate_pct'] >= 80 else ACCENT_DANGER),
             ("✅", "Genauigkeit GT", f"{s['accuracy_pct']}%",
              ACCENT_SUCCESS if s['accuracy_pct'] >= 80 else ACCENT_WARNING),
+            ("⚠️", "Falsch gelesen", f"{s.get('false_read_count', '–')}",
+             ACCENT_DANGER if s.get('false_read_count') else ACCENT_SUCCESS),
             ("⏱️", "Ø Dauer", f"{s['avg_duration_ms']:.0f}ms", ACCENT_INFO),
             ("📊", "Erfolg/Gesamt",
              f"{s['success_count']}/{s['total_images']}", ACCENT_PRIMARY),
@@ -1472,7 +1484,7 @@ class BenchmarkApp(ctk.CTk):
             ("Konfidenz", f"{result['confidence']:.1%}", TEXT_PRIMARY),
             ("Dauer", f"{result['duration_ms']} ms", TEXT_PRIMARY),
             ("DataMatrix (DMTX)", result["dmtx_result"] or "Nicht erkannt", TEXT_SECONDARY),
-            ("OCR (Klarschrift)", result["ocr_result"] or "Nicht erkannt", TEXT_SECONDARY),
+            ("OCR (Klarschrift)", result["ocr_result"] or ("Übersprungen (DMX dekodiert)" if result["dmtx_result"] else "Nicht erkannt"), TEXT_SECONDARY),
             ("OCR Partial", result["ocr_partial"] or "—", TEXT_MUTED),
         ]
 
@@ -1702,6 +1714,11 @@ class BenchmarkApp(ctk.CTk):
                 "🔤", "OCR / Klarschrift-Erkennung",
                 f"Teilweise: {partial}", ACCENT_WARNING,
             ))
+        elif dmtx:
+            steps.append((
+                "🔤", "OCR / Klarschrift-Erkennung",
+                "Übersprungen (DataMatrix dekodiert)", TEXT_MUTED,
+            ))
         else:
             steps.append((
                 "🔤", "OCR / Klarschrift-Erkennung",
@@ -1746,5 +1763,11 @@ class BenchmarkApp(ctk.CTk):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="DataDetector Benchmark & Ground-Truth-Tool")
+    parser.add_argument("--images", default=IMAGE_DIR, help="Bildordner (Standard: training_data)")
+    parser.add_argument("--gt", default=GROUND_TRUTH_PATH, help="Ground-Truth-Datei (Standard: ground_truth.json)")
+    args = parser.parse_args()
+    IMAGE_DIR = os.path.abspath(args.images)
+    GROUND_TRUTH_PATH = os.path.abspath(args.gt)
     app = BenchmarkApp()
     app.mainloop()

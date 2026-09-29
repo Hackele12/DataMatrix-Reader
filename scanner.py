@@ -30,6 +30,15 @@ _dmtx_loaded = False
 # --- Schalter für zxing-cpp Fast-Path Integration ---
 USE_ZXING_FASTPATH = True
 
+# PACC-Char-Classifier: überkonfident und meist falsch (Benchmark 57/172) → erst nach Neutraining wieder aktivieren.
+USE_PACC = False
+
+# Horden-DB nur speichern, nicht zum Lesen/Korrigieren nutzen (Ganzbild-Abgleich erkennt die Szene, nicht den Code).
+USE_HORDE_DB_MATCHING = False
+
+# Gitter-Rekonstruktion gegen Referenzgitter: im Benchmark ohne Treffer, verursacht aber bis zu Minuten Rechenzeit.
+USE_GRID_RECONSTRUCTION = False
+
 # --- Erlaubte Zeichen für Horden-Codes ---
 ALLOWED_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 REQUIRED_LENGTH = 4
@@ -126,7 +135,7 @@ def _try_zxing_dmtx(image: np.ndarray) -> str | None:
             )
             if res and res.valid and res.text:
                 text = res.text.strip()
-                candidate = _clean_to_4chars(text)
+                candidate = _dmx_text_to_code(text)
                 if candidate is not None:
                     logger.info(f"zxing-cpp DataMatrix erkannt (Binarisierer {binarizer}): '{candidate}'")
                     return candidate
@@ -134,6 +143,136 @@ def _try_zxing_dmtx(image: np.ndarray) -> str | None:
         logger.debug(f"zxing-cpp Fehler: {e}")
     
     return None
+
+
+def _dmx_text_to_code(text: str | None) -> str | None:
+    """DataMatrix-Inhalt ist Reed-Solomon-geprüft und exakt: nur Formatprüfung, keine OCR-Normalisierung."""
+    if not text:
+        return None
+    code = ''.join(c for c in text.upper() if c in ALLOWED_CHARS)
+    return code if _HORDEN_PATTERN.match(code) else None
+
+
+def _zxing_decode_strict(gray: np.ndarray) -> str | None:
+    """Ein zxing-cpp DataMatrix-Versuch mit zwei Binarisierern und strikter Formatprüfung."""
+    import zxingcpp
+    img = np.ascontiguousarray(gray)
+    for binarizer in (zxingcpp.Binarizer.LocalAverage, zxingcpp.Binarizer.GlobalHistogram):
+        res = zxingcpp.read_barcode(
+            img,
+            formats=zxingcpp.BarcodeFormat.DataMatrix,
+            try_rotate=True,
+            try_downscale=True,
+            binarizer=binarizer,
+        )
+        if res and res.valid:
+            code = _dmx_text_to_code(res.text)
+            if code:
+                return code
+    return None
+
+
+def _disk(k: int) -> np.ndarray:
+    return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+
+
+def _dotpeen_variants(gray: np.ndarray):
+    """Vorverarbeitungen für Punkt-DataMatrix (genadelt/gelasert), die Einzelpunkte zu vollen Modulen verbinden."""
+    for scale in (1.0, 0.75, 0.5, 0.35):
+        base = gray if scale == 1.0 else cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        yield f"s{scale}", base
+        for k in (3, 5, 7):
+            yield f"s{scale}_median{k}", cv2.medianBlur(base, k)
+            yield f"s{scale}_erode{k}", cv2.erode(base, _disk(k))
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+        yield f"s{scale}_clahe_median5", cv2.medianBlur(clahe.apply(base), 5)
+    for k in (7, 9, 11, 13):
+        merged = cv2.dilate(cv2.erode(gray, _disk(k)), _disk(k // 2))
+        for scale in (0.5, 0.35):
+            small = cv2.resize(merged, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            yield f"merge{k}_s{scale}", small
+            yield f"merge{k}_s{scale}_adaptive", cv2.adaptiveThreshold(
+                small, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 31, 5)
+
+
+def _fullframe_variants(gray: np.ndarray):
+    yield "full_raw", gray
+    yield "full_s0.5", cv2.resize(gray, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+    for k in (5, 9):
+        yield f"full_median{k}_s0.5", cv2.resize(cv2.medianBlur(gray, k), None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+    for k in (5, 7):
+        yield f"full_erode{k}_s0.5", cv2.resize(cv2.erode(gray, _disk(k)), None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+
+
+def _locate_dmx_regions(gray: np.ndarray, max_regions: int = 3) -> list[tuple[int, int, int, int]]:
+    """YOLO-unabhängige DMX-Suche: kompakte, annähernd quadratische Häufung dunkler Punkte."""
+    scale = 360.0 / gray.shape[1]
+    small = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    blackhat = cv2.morphologyEx(small, cv2.MORPH_BLACKHAT, cv2.getStructuringElement(cv2.MORPH_RECT, (21, 21)))
+    _, mask = cv2.threshold(blackhat, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7)))
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    scored = []
+    for contour in contours:
+        x, y, bw, bh = cv2.boundingRect(contour)
+        if not (15 <= bw <= 120 and 15 <= bh <= 120 and 0.7 < bw / bh < 1.4):
+            continue
+        fill = cv2.contourArea(contour) / float(bw * bh)
+        if fill > 0.5:
+            box = (int(x / scale), int(y / scale), int((x + bw) / scale), int((y + bh) / scale))
+            scored.append((fill * bw * bh, box))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [box for _, box in scored[:max_regions]]
+
+
+def _crop_with_margin(gray: np.ndarray, box, margin_ratio: float) -> np.ndarray:
+    x1, y1, x2, y2 = (int(v) for v in box)
+    margin = int(max(x2 - x1, y2 - y1) * margin_ratio)
+    h, w = gray.shape[:2]
+    return gray[max(0, y1 - margin):min(h, y2 + margin), max(0, x1 - margin):min(w, x2 + margin)]
+
+
+def _decode_dmx_dotpeen(frame: np.ndarray, dmx_boxes=()) -> tuple[str | None, str | None]:
+    """Schnelle zxing-DMX-Dekodierung auf YOLO-Boxen, gefundenen DMX-Regionen und Gesamtbild → (Code, Detail)."""
+    if frame is None or frame.size == 0 or not _load_zxing():
+        return None, None
+    try:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
+        regions = [("yolo", _crop_with_margin(gray, box, 0.15)) for box in list(dmx_boxes)[:2]]
+        regions += [("locator", _crop_with_margin(gray, box, 0.5)) for box in _locate_dmx_regions(gray)]
+        regions = [(name, crop) for name, crop in regions if min(crop.shape[:2]) >= 20]
+
+        for name, crop in regions:
+            code = _zxing_decode_strict(crop)
+            if code:
+                return code, f"{name}_raw"
+        for name, crop in regions:
+            for variant_name, variant in _dotpeen_variants(crop):
+                code = _zxing_decode_strict(variant)
+                if code:
+                    return code, f"{name}_{variant_name}"
+        for variant_name, variant in _fullframe_variants(gray):
+            code = _zxing_decode_strict(variant)
+            if code:
+                return code, variant_name
+    except Exception as e:
+        logger.warning(f"Dot-Peen DMX-Dekodierung Fehler: {e}")
+    return None, None
+
+
+def _dmx_final_result(code: str, method_detail: str, ocr_text: str | None = None) -> dict:
+    """Endergebnis für einen echten DataMatrix-Decode – wird nicht mehr durch OCR oder Gegenprobe überstimmt."""
+    return {
+        "success": True,
+        "result": code,
+        "method": "Verifiziert",
+        "confidence": 1.0,
+        "dmtx_result": code,
+        "ocr_result": ocr_text,
+        "verified": True,
+        "ocr_partial_display": ocr_text,
+        "method_detail": method_detail,
+    }
 
 
 # --- Trained AI Models (ONNX Runtime) & DataMatrix Generator ---
@@ -202,6 +341,8 @@ def _predict_pacc(image: np.ndarray) -> tuple[str | None, float]:
     Returns:
         tuple[str | None, float]: (erkoannter Code, Konfidenz) oder (None, 0.0)
     """
+    if not USE_PACC:
+        return None, 0.0
     session = _load_pacc()
     if session is None or image is None or image.size == 0:
         return None, 0.0
@@ -2039,6 +2180,8 @@ def _try_reconstruct(frame: np.ndarray, ocr_text: str | None,
     Returns:
         dict | None: Ergebnis-Dictionary oder None bei Fehlschlag.
     """
+    if not USE_GRID_RECONSTRUCTION:
+        return None
     candidates = set()
 
     # Kandidatengenerierung (formatbasiert: ^[ABPW][0-9]{3}$)
@@ -2277,7 +2420,7 @@ def _try_decode_dmtx(pil_img, timeout_ms: int = 250) -> str | None:
         decoded = decode(pil_img, timeout=timeout_ms)
         if decoded:
             result_text = decoded[0].data.decode("utf-8", errors="ignore").strip()
-            candidate = _clean_to_4chars(result_text)
+            candidate = _dmx_text_to_code(result_text)
             if candidate is not None:
                 return candidate
     except Exception:
@@ -3686,11 +3829,7 @@ def _merge_results(ocr_result: dict, dmx_result: dict, frame: np.ndarray,
             recon_result = _try_reconstruct(frame, ocr_text, ocr_conf, None)
             if recon_result is not None and recon_result.get("success"):
                 recon_result["ocr_partial_display"] = ocr_text
-                # Promote to Verifiziert if the reconstructed code matches normalized OCR text
-                if recon_result["result"] == _normalize_ocr_confusions(ocr_text):
-                    recon_result["method"] = "Verifiziert"
-                    recon_result["confidence"] = 1.0
-                    recon_result["verified"] = True
+                # Kandidaten stammen aus der OCR-Lesung → Übereinstimmung ist keine unabhängige Verifikation.
                 return recon_result
 
         # 2a. OCR mit sehr hoher Konfidenz (≥0.98): Direkt akzeptieren
@@ -4189,10 +4328,33 @@ def scan_2class(frame: np.ndarray, detections: list[dict], cancellation_check=No
     txt_info = f"TXT=Ja(conf={txt_det['conf']:.2f})" if txt_det else "TXT=Nein"
     logger.info(f"[2CLASS] Detections: {dmx_info}, {txt_info}")
 
+    detections_info = {
+        "dmx_box": dmx_det["box"] if dmx_det else None,
+        "dmx_conf": dmx_det["conf"] if dmx_det else 0.0,
+        "txt_box": txt_det["box"] if txt_det else None,
+        "txt_conf": txt_det["conf"] if txt_det else 0.0,
+    }
+
+    # DMX zuerst: ein echter Decode ist endgültig, OCR und Gegenprobe entfallen dann.
+    t_dmx_start = time.time()
+    yolo_dmx_boxes = [
+        det["box"] for det in sorted(detections, key=lambda d: d.get("conf", 0.0), reverse=True)
+        if det.get("cls") == 0
+    ]
+    dot_code, dot_detail = _decode_dmx_dotpeen(frame, yolo_dmx_boxes)
+    if dot_code:
+        dmx_ms = int((time.time() - t_dmx_start) * 1000)
+        logger.info(f"[2CLASS] DataMatrix dekodiert ({dot_detail}): '{dot_code}' ({dmx_ms}ms). OCR übersprungen.")
+        result = _dmx_final_result(dot_code, f"DataMatrix dekodiert (zxing-cpp, {dot_detail})")
+        result["_internal_timing"] = {"total_2class_ms": dmx_ms, "dmtx_ms": dmx_ms, "ocr_ms": 0}
+        result["_2class_mode"] = True
+        result["_detections"] = detections_info
+        return result
+
     # Falls weder DataMatrix noch Text erkannt wurde, Fallback auf Vollbild scan()
     if dmx_det is None and txt_det is None:
         logger.info("[2CLASS] Keine YOLO-Detections. Starte Fallback auf scan().")
-        return scan(frame)
+        return scan(frame, try_dotpeen=False)
 
 
     # --- Crops erzeugen ---
@@ -4265,6 +4427,17 @@ def scan_2class(frame: np.ndarray, detections: list[dict], cancellation_check=No
             "missing_positions": [], "raw_candidate": None,
         }
 
+    # Echter DMX-Decode im Crop (zxing/pylibdmtx, Reed-Solomon-geprüft) ist endgültig; OCR nur noch als Info.
+    crop_code = _dmx_text_to_code(dmx_result.get("text")) if dmx_result.get("status") == "decoded" else None
+    if crop_code:
+        logger.info(f"[2CLASS] DataMatrix im Crop dekodiert: '{crop_code}' (OCR: '{ocr_result.get('text')}'). Endgültig.")
+        result = _dmx_final_result(
+            crop_code, dmx_result.get("method_detail", "DataMatrix dekodiert"), ocr_result.get("text"))
+        result["_internal_timing"] = {"total_2class_ms": t_total}
+        result["_2class_mode"] = True
+        result["_detections"] = detections_info
+        return result
+
     # --- Ergebnisse mergen (bestehende Triple-Fusion-Logik) ---
     # Für die merge-Funktion brauchen wir das Frame für eventuelle Rekonstruktionen.
     # Wir nutzen den DMX-Crop, wenn vorhanden, sonst das Gesamtbild.
@@ -4274,12 +4447,7 @@ def scan_2class(frame: np.ndarray, detections: list[dict], cancellation_check=No
 
     result["_internal_timing"] = {"total_2class_ms": t_total}
     result["_2class_mode"] = True
-    result["_detections"] = {
-        "dmx_box": dmx_det["box"] if dmx_det else None,
-        "dmx_conf": dmx_det["conf"] if dmx_det else 0.0,
-        "txt_box": txt_det["box"] if txt_det else None,
-        "txt_conf": txt_det["conf"] if txt_det else 0.0,
-    }
+    result["_detections"] = detections_info
 
     logger.info(
         f"[2CLASS] Ergebnis: success={result['success']}, "
@@ -4291,7 +4459,7 @@ def scan_2class(frame: np.ndarray, detections: list[dict], cancellation_check=No
     if not result.get("success"):
         # Fall A: 2class hat nichts gefunden → Fallback auf scan()
         logger.info("[2CLASS] 2-Klassen-Crop ohne Erfolg. Starte Fallback auf scan().")
-        fallback_res = scan(frame)
+        fallback_res = scan(frame, try_dotpeen=False)
         if fallback_res.get("success"):
             fb_verified = fallback_res.get("verified", False)
             fb_conf = fallback_res.get("confidence", 0)
@@ -4321,7 +4489,7 @@ def scan_2class(frame: np.ndarray, detections: list[dict], cancellation_check=No
         f"(method={result['method']}, conf={result.get('confidence', 0):.2f}). "
         f"Starte Gegenprobe mit scan() auf Gesamtbild..."
     )
-    crossval_res = scan(frame)
+    crossval_res = scan(frame, try_dotpeen=False)
 
     if not crossval_res.get("success"):
         # scan() hat auch nichts gefunden → 2class-Ergebnis NUR akzeptieren wenn es KEINE blinde Rekonstruktion war
@@ -4520,7 +4688,7 @@ def _ocr_postprocess(code: str, frame: np.ndarray = None) -> str:
         return code
 
 
-def scan(frame: np.ndarray) -> dict:
+def scan(frame: np.ndarray, cancellation_check=None, try_dotpeen: bool = True) -> dict:
     """
     Haupt-Scan-Funktion mit Triple-Validation (v5.0).
     Führt OCR-, DataMatrix- und Referenzbild-Erkennung parallel in Threads aus
@@ -4542,6 +4710,19 @@ def scan(frame: np.ndarray) -> dict:
 
     h, w = frame.shape[:2]
     logger.info(f"Triple-Validation Scan v5.0 gestartet auf Bild mit {w}x{h} Pixeln.")
+
+    if cancellation_check and cancellation_check():
+        return {"success": False, "result": "ABORTED", "method": "Abgebrochen", "confidence": 0.0, "cancelled": True}
+
+    if try_dotpeen:
+        t_dot = time.time()
+        dot_code, dot_detail = _decode_dmx_dotpeen(frame)
+        if dot_code:
+            dot_ms = int((time.time() - t_dot) * 1000)
+            logger.info(f"[FAST-PATH] DataMatrix dekodiert ({dot_detail}): '{dot_code}' ({dot_ms}ms). Skippe OCR.")
+            result = _dmx_final_result(dot_code, f"DataMatrix dekodiert (zxing-cpp, {dot_detail})")
+            result["_internal_timing"] = {"ocr_ms": 0, "dmtx_ms": dot_ms, "refimg_ms": 0}
+            return result
 
     try:
         fast_dmx = _scan_datamatrix_pipeline(frame)
@@ -4567,7 +4748,7 @@ def scan(frame: np.ndarray) -> dict:
     # ===== FAST-PATH 2: Horden-DB Referenzbild-Matching (< 10ms) =====
     try:
         import horde_db
-        horde_match = horde_db.match_horde_image(frame, min_confidence=0.88)
+        horde_match = horde_db.match_horde_image(frame, min_confidence=0.88) if USE_HORDE_DB_MATCHING else None
         if horde_match and horde_match.get("success") and horde_match.get("result"):
             code = horde_match["result"]
             conf = horde_match.get("confidence", 0.85)
@@ -4585,6 +4766,9 @@ def scan(frame: np.ndarray) -> dict:
             }
     except Exception as e:
         logger.warning(f"HordeDB FastPath Fehler: {e}")
+
+    if cancellation_check and cancellation_check():
+        return {"success": False, "result": "ABORTED", "method": "Abgebrochen", "confidence": 0.0, "cancelled": True}
 
     ocr_result = None
     ref_img_result = None
@@ -4723,7 +4907,7 @@ def scan(frame: np.ndarray) -> dict:
     # --- OCR-Postprocessing: Konfusionsmatrix-Korrektur ---
     # Korrigiert systematische Zeichenverwechslungen (z.B. W852 → W052)
     # wenn eine Horden-DB Vorlage für die korrigierte Variante existiert.
-    if result.get("success") and result.get("result") and not result.get("verified", False):
+    if USE_HORDE_DB_MATCHING and result.get("success") and result.get("result") and not result.get("verified", False):
         original_code = result["result"]
         corrected_code = _ocr_postprocess(original_code, frame)
         if corrected_code != original_code:
