@@ -203,10 +203,10 @@ def estimate_missing_position_spatial(ocr_results: list) -> list[int]:
 #  Multi-Pass OCR                                                              #
 # --------------------------------------------------------------------------- #
 
-def _prepare_ocr_zone(frame: np.ndarray) -> np.ndarray:
-    """Untere 65 % des Bildes (Klarschrift) mit Rand für die CRAFT-Detektion, max. 800 px breit."""
+def _prepare_ocr_zone(frame: np.ndarray, text_crop: bool = False) -> np.ndarray:
+    """Untere 65 % des Bildes (Klarschrift; bei text_crop das ganze Bild) mit Rand für die CRAFT-Detektion, max. 800 px breit."""
     h_frame = frame.shape[0]
-    ocr_zone = frame[int(h_frame * 0.35):, :]
+    ocr_zone = frame if text_crop else frame[int(h_frame * 0.35):, :]
     # value=255 ist nur bei Graustufen weiß; bei BGR entsteht (255, 0, 0) – eine Änderung verschiebt OCR-Ergebnisse
     ocr_zone = cv2.copyMakeBorder(ocr_zone, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
 
@@ -246,16 +246,17 @@ def _partial_from_three_chars(results: list, variant_name: str) -> dict | None:
     }
 
 
-def read_ocr_with_status(frame: np.ndarray) -> dict:
+def read_ocr_with_status(frame: np.ndarray, text_crop: bool = False) -> dict:
     """
     Liest die Klarschrift mit mehreren Vorverarbeitungen (Multi-Pass) und liefert das beste Ergebnis.
+    text_crop: das Bild ist bereits ein Klarschrift-Ausschnitt (nicht auf die untere Bildhälfte beschränken).
 
     Returns:
         dict mit status ("ok" | "partial" | "failed"), text, partial_display, readable_chars, confidence,
         readable_count, missing_positions, raw_candidate.
     """
     try:
-        ocr_zone = _prepare_ocr_zone(frame)
+        ocr_zone = _prepare_ocr_zone(frame, text_crop)
 
         pacc_code, pacc_conf = predict_pacc(ocr_zone)
         if pacc_code is not None and pacc_conf >= 0.70:

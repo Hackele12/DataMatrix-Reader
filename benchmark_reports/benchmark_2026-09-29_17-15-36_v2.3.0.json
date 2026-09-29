@@ -1,0 +1,206 @@
+{
+  "version": "2.3.0",
+  "timestamp": "2026-09-29T17:15:36.461465",
+  "image_dir": "C:\\Users\\kremidas\\Documents\\DataDetector\\field_data",
+  "ground_truth_file": "C:\\Users\\kremidas\\Documents\\DataDetector\\ground_truth_field.json",
+  "summary": {
+    "total_images": 4,
+    "success_count": 4,
+    "success_rate_pct": 100.0,
+    "accuracy_count": 4,
+    "accuracy_total_gt": 4,
+    "accuracy_pct": 100.0,
+    "false_read_count": 0,
+    "no_read_count": 0,
+    "avg_duration_ms": 2374.0,
+    "total_time_s": 9.6,
+    "method_distribution": {
+      "Modulabgleich": 4
+    },
+    "stage_distribution": {
+      "DataMatrix Modulabgleich (NCC 0.82, Marge 0.24)": 1,
+      "DataMatrix Modulabgleich (NCC 0.82, Marge 0.25)": 1,
+      "DataMatrix Modulabgleich (NCC 0.77, Marge 0.33)": 1,
+      "DataMatrix Modulabgleich (NCC 0.72, Marge 0.28)": 1
+    },
+    "failure_categories": {}
+  },
+  "details": [
+    {
+      "index": 1,
+      "filename": "train_data_20260928_155202.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\field_data\\train_data_20260928_155202.jpg",
+      "success": true,
+      "result_code": "W003",
+      "expected": "W003",
+      "is_match": true,
+      "method": "Modulabgleich",
+      "method_detail": "DataMatrix Modulabgleich (NCC 0.82, Marge 0.24)",
+      "confidence": 0.82,
+      "duration_ms": 3609,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.975634753704071,
+          "box": [
+            417,
+            198,
+            1017,
+            652
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8958913683891296,
+          "box": [
+            425,
+            661,
+            1003,
+            840
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W003",
+      "ocr_partial": null
+    },
+    {
+      "index": 2,
+      "filename": "train_data_20260928_155212.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\field_data\\train_data_20260928_155212.jpg",
+      "success": true,
+      "result_code": "W003",
+      "expected": "W003",
+      "is_match": true,
+      "method": "Modulabgleich",
+      "method_detail": "DataMatrix Modulabgleich (NCC 0.82, Marge 0.25)",
+      "confidence": 0.82,
+      "duration_ms": 1687,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9692384004592896,
+          "box": [
+            414,
+            192,
+            1017,
+            651
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.879423201084137,
+          "box": [
+            422,
+            659,
+            1004,
+            840
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W003",
+      "ocr_partial": null
+    },
+    {
+      "index": 3,
+      "filename": "train_data_20260928_155330.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\field_data\\train_data_20260928_155330.jpg",
+      "success": true,
+      "result_code": "W005",
+      "expected": "W005",
+      "is_match": true,
+      "method": "Modulabgleich",
+      "method_detail": "DataMatrix Modulabgleich (NCC 0.77, Marge 0.33)",
+      "confidence": 0.77,
+      "duration_ms": 2182,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9706091284751892,
+          "box": [
+            427,
+            666,
+            997,
+            845
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.9068285822868347,
+          "box": [
+            406,
+            203,
+            1002,
+            655
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.47979608178138733,
+          "box": [
+            397,
+            199,
+            993,
+            650
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W005",
+      "ocr_partial": null
+    },
+    {
+      "index": 4,
+      "filename": "train_data_20260928_155449.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\field_data\\train_data_20260928_155449.jpg",
+      "success": true,
+      "result_code": "W005",
+      "expected": "W005",
+      "is_match": true,
+      "method": "Modulabgleich",
+      "method_detail": "DataMatrix Modulabgleich (NCC 0.72, Marge 0.28)",
+      "confidence": 0.72,
+      "duration_ms": 2018,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9301199913024902,
+          "box": [
+            428,
+            665,
+            992,
+            844
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8695968985557556,
+          "box": [
+            407,
+            203,
+            1001,
+            653
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.5415023565292358,
+          "box": [
+            398,
+            199,
+            992,
+            649
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W005",
+      "ocr_partial": null
+    }
+  ]
+}

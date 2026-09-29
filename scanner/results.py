@@ -33,6 +33,13 @@ def dmx_final_result(code: str, method_detail: str, ocr_text: str | None = None)
     return result
 
 
+def dmx_soft_result(code: str, method_detail: str, confidence: float) -> dict:
+    """DataMatrix per Modulabgleich mit dem Codebuch gelesen (kalibrierte Schwellen, ohne Reed-Solomon-Bestätigung)."""
+    result = scan_result(True, code, "Modulabgleich", confidence, dmtx=code)
+    result["method_detail"] = method_detail
+    return result
+
+
 # --- Zwischenergebnisse der Teil-Pipelines ---
 
 def ocr_ok(text: str, confidence: float) -> dict:

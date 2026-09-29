@@ -18,6 +18,24 @@ USE_HORDE_DB_MATCHING = False
 # Gitter-Rekonstruktion gegen Referenzgitter: im Benchmark ohne Treffer, verursacht aber bis zu Minuten Rechenzeit.
 USE_GRID_RECONSTRUCTION = False
 
+# Modul-Decoder (dmx_module_reader) für gesprenkelte, gescherte oder unscharfe Codes nach dem zxing-Schnellpfad.
+USE_MODULE_READER = True
+
+# Annahme eines Modul-Decoder-Ergebnisses ohne Reed-Solomon-Bestätigung (Korrelation mit dem Codebuch).
+# Kalibrierung: echte schwere Codes NCC ≥ 0.72 / Marge ≥ 0.24; Zufallsdaten mit perfektem Rahmen passieren
+# 0.70/0.20 mit 4e-6 (1 Mio. Muster), fremde 10x10-Codes mit Horden-Präfix 0 von 200.000.
+SOFT_MIN_NCC = 0.70
+SOFT_MIN_MARGIN = 0.20
+SOFT_MIN_FRAME_T = 3.0
+
+# Alte DataMatrix-Kaskade (pylibdmtx, Gitter-Sampling, Referenzbild-Abgleich) nach den schnellen Stufen.
+# Im Benchmark ohne eigenen Treffer, kostet bei unlesbaren Codes aber mehrere Sekunden.
+USE_LEGACY_DMX_CASCADE = False
+
+# Zeitbudget eines Scans: schnelle DMX-Stufen laufen immer, danach starten optionale Stufen
+# (Gesamtbild-Fallback, Gamma-OCR) nur noch, solange Budget übrig ist. Die OCR-Gegenprobe läuft immer.
+SCAN_TIME_BUDGET_S = 3.0
+
 # --- Horden-Code-Format: [A|B|P|W] + 3 Ziffern ---
 ALLOWED_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 REQUIRED_LENGTH = 4

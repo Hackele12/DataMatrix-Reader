@@ -215,6 +215,10 @@ def _compute_flags(result: dict, detection_info: dict, timing: dict) -> list[str
 
     if method == "Rekonstruiert":
         flags.append("RECONSTRUCTED")
+    if method == "Modulabgleich":
+        flags.append("SOFT_DMX")
+    if result.get("frames_used", 1) > 1:
+        flags.append("MULTI_FRAME")
 
     if result.get("ocr_partial_display") and not result.get("ocr_result"):
         flags.append("OCR_PARTIAL")
@@ -441,8 +445,11 @@ class ScanLogger:
                 "success": scan_result.get("success", False),
                 "code": scan_result.get("result"),
                 "method": scan_result.get("method"),
+                "detail": scan_result.get("method_detail"),
                 "confidence": round(scan_result.get("confidence", 0.0), 4),
                 "verified": scan_result.get("verified", False),
+                "frames": scan_result.get("frames_used", 1),
+                "module": scan_result.get("_module"),
             },
             "timing": {
                 "total_ms": timing.get("total_ms", scan_result.get("duration_ms", 0)),

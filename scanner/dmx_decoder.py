@@ -4,6 +4,7 @@ Sichtbarkeitsanalyse und Rahmen-Rekonstruktion aus den inneren 8x8-Modulen.
 """
 
 import logging
+from itertools import islice
 
 import cv2
 import numpy as np
@@ -145,35 +146,44 @@ def locate_dmx_regions(gray: np.ndarray, max_regions: int = 3) -> list[tuple[int
     return [box for _, box in scored[:max_regions]]
 
 
-def decode_dmx_dotpeen(frame: np.ndarray, dmx_boxes=()) -> tuple[str | None, str | None]:
-    """Schnelle zxing-DMX-Dekodierung auf YOLO-Boxen, gefundenen DMX-Regionen und Gesamtbild → (Code, Detail)."""
-    if frame is None or frame.size == 0:
-        return None, None
+def zxing_dmx_stream(frame: np.ndarray, dmx_boxes=()):
+    """
+    Alle zxing-Versuche in fester Reihenfolge (lazy) → (Detail, Bild): Rohausschnitte der YOLO-Boxen und
+    gefundenen DMX-Regionen, Dot-Peen-Varianten je Region, zuletzt Varianten des Gesamtbilds.
+    """
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
+    regions = [("yolo", crop_with_margin(gray, box, 0.15)) for box in list(dmx_boxes)[:2]]
+    regions += [("locator", crop_with_margin(gray, box, 0.5)) for box in locate_dmx_regions(gray)]
+    regions = [(name, crop) for name, crop in regions if min(crop.shape[:2]) >= 20]
+    for name, crop in regions:
+        yield f"{name}_raw", crop
+    for name, crop in regions:
+        for variant_name, variant in _dotpeen_variants(crop):
+            yield f"{name}_{variant_name}", variant
+    for variant_name, variant in _fullframe_variants(gray):
+        yield variant_name, variant
+
+
+def decode_zxing_stream(stream, limit: int | None = None) -> tuple[str | None, str | None]:
+    """Prüft die nächsten `limit` Versuche eines zxing_dmx_stream (alle bei None) → (Code, Detail)."""
     zx = _zxing()
     if zx is None:
         return None, None
     try:
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
-        regions = [("yolo", crop_with_margin(gray, box, 0.15)) for box in list(dmx_boxes)[:2]]
-        regions += [("locator", crop_with_margin(gray, box, 0.5)) for box in locate_dmx_regions(gray)]
-        regions = [(name, crop) for name, crop in regions if min(crop.shape[:2]) >= 20]
-
-        for name, crop in regions:
-            code = _zxing_decode_strict(zx, crop)
+        for detail, image in islice(stream, limit):
+            code = _zxing_decode_strict(zx, image)
             if code:
-                return code, f"{name}_raw"
-        for name, crop in regions:
-            for variant_name, variant in _dotpeen_variants(crop):
-                code = _zxing_decode_strict(zx, variant)
-                if code:
-                    return code, f"{name}_{variant_name}"
-        for variant_name, variant in _fullframe_variants(gray):
-            code = _zxing_decode_strict(zx, variant)
-            if code:
-                return code, variant_name
+                return code, detail
     except Exception as e:
         logger.warning(f"Dot-Peen DMX-Dekodierung Fehler: {e}")
     return None, None
+
+
+def decode_dmx_dotpeen(frame: np.ndarray, dmx_boxes=()) -> tuple[str | None, str | None]:
+    """Alle zxing-Versuche von zxing_dmx_stream in einem Durchlauf → (Code, Detail)."""
+    if frame is None or frame.size == 0:
+        return None, None
+    return decode_zxing_stream(zxing_dmx_stream(frame, dmx_boxes))
 
 
 # --------------------------------------------------------------------------- #

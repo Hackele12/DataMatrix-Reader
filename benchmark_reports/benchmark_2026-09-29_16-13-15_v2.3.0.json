@@ -1,0 +1,7668 @@
+{
+  "version": "2.3.0",
+  "timestamp": "2026-09-29T16:13:15.560276",
+  "image_dir": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data",
+  "ground_truth_file": "C:\\Users\\kremidas\\Documents\\DataDetector\\ground_truth.json",
+  "summary": {
+    "total_images": 172,
+    "success_count": 172,
+    "success_rate_pct": 100.0,
+    "accuracy_count": 172,
+    "accuracy_total_gt": 172,
+    "accuracy_pct": 100.0,
+    "false_read_count": 0,
+    "no_read_count": 0,
+    "avg_duration_ms": 417.8,
+    "total_time_s": 73.4,
+    "method_distribution": {
+      "Verifiziert": 170,
+      "Modulabgleich": 2
+    },
+    "stage_distribution": {
+      "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)": 135,
+      "DataMatrix dekodiert (zxing-cpp, yolo_raw)": 19,
+      "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)": 4,
+      "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon + 2 Löschungen)": 4,
+      "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_clahe_median5)": 2,
+      "DataMatrix Modulabgleich (NCC 0.85, Marge 0.26)": 1,
+      "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_median3)": 1,
+      "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)": 1,
+      "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_clahe_median5)": 1,
+      "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)": 1,
+      "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_erode3)": 1,
+      "DataMatrix Modulabgleich (NCC 0.79, Marge 0.28)": 1,
+      "DataMatrix dekodiert (zxing-cpp, locator_s0.35_erode3)": 1
+    },
+    "failure_categories": {}
+  },
+  "details": [
+    {
+      "index": 1,
+      "filename": "001.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\001.jpg",
+      "success": true,
+      "result_code": "B182",
+      "expected": "B182",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 856,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9521668553352356,
+          "box": [
+            377,
+            382,
+            655,
+            664
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8344537019729614,
+          "box": [
+            385,
+            659,
+            661,
+            767
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "B182",
+      "ocr_partial": null
+    },
+    {
+      "index": 2,
+      "filename": "002.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\002.jpg",
+      "success": true,
+      "result_code": "W039",
+      "expected": "W039",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 467,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.931776762008667,
+          "box": [
+            720,
+            754,
+            938,
+            851
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.4017581343650818,
+          "box": [
+            720,
+            530,
+            934,
+            752
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W039",
+      "ocr_partial": null
+    },
+    {
+      "index": 3,
+      "filename": "003.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\003.jpg",
+      "success": true,
+      "result_code": "W039",
+      "expected": "W039",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 543,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9295686483383179,
+          "box": [
+            720,
+            754,
+            937,
+            851
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.4725070595741272,
+          "box": [
+            720,
+            531,
+            934,
+            752
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W039",
+      "ocr_partial": null
+    },
+    {
+      "index": 4,
+      "filename": "004.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\004.jpg",
+      "success": true,
+      "result_code": "W039",
+      "expected": "W039",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 494,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.8988322615623474,
+          "box": [
+            663,
+            679,
+            875,
+            905
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8084098696708679,
+          "box": [
+            647,
+            905,
+            870,
+            1001
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W039",
+      "ocr_partial": null
+    },
+    {
+      "index": 5,
+      "filename": "005.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\005.jpg",
+      "success": true,
+      "result_code": "W039",
+      "expected": "W039",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 429,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9376240968704224,
+          "box": [
+            635,
+            675,
+            849,
+            903
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.86925208568573,
+          "box": [
+            612,
+            901,
+            835,
+            998
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W039",
+      "ocr_partial": null
+    },
+    {
+      "index": 6,
+      "filename": "006.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\006.jpg",
+      "success": true,
+      "result_code": "B177",
+      "expected": "B177",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 447,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.8671083450317383,
+          "box": [
+            697,
+            731,
+            899,
+            952
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.23299801349639893,
+          "box": [
+            721,
+            927,
+            869,
+            1023
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "B177",
+      "ocr_partial": null
+    },
+    {
+      "index": 7,
+      "filename": "007.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\007.jpg",
+      "success": true,
+      "result_code": "B177",
+      "expected": "B177",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 437,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.8446805477142334,
+          "box": [
+            697,
+            731,
+            900,
+            951
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.2742196321487427,
+          "box": [
+            721,
+            925,
+            872,
+            1022
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "B177",
+      "ocr_partial": null
+    },
+    {
+      "index": 8,
+      "filename": "008.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\008.jpg",
+      "success": true,
+      "result_code": "B177",
+      "expected": "B177",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 418,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9537233114242554,
+          "box": [
+            702,
+            570,
+            922,
+            793
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.911528468132019,
+          "box": [
+            708,
+            790,
+            930,
+            880
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "B177",
+      "ocr_partial": null
+    },
+    {
+      "index": 9,
+      "filename": "009.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\009.jpg",
+      "success": true,
+      "result_code": "B177",
+      "expected": "B177",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 444,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.8984313011169434,
+          "box": [
+            694,
+            574,
+            907,
+            796
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.6104681491851807,
+          "box": [
+            695,
+            791,
+            919,
+            880
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "B177",
+      "ocr_partial": null
+    },
+    {
+      "index": 10,
+      "filename": "010.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\010.jpg",
+      "success": true,
+      "result_code": "B177",
+      "expected": "B177",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 428,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9113508462905884,
+          "box": [
+            679,
+            714,
+            899,
+            802
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7420443296432495,
+          "box": [
+            686,
+            491,
+            898,
+            716
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "B177",
+      "ocr_partial": null
+    },
+    {
+      "index": 11,
+      "filename": "011.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\011.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 424,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.6153175830841064,
+          "box": [
+            414,
+            664,
+            1004,
+            851
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.6021530032157898,
+          "box": [
+            403,
+            204,
+            1013,
+            676
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.2124280482530594,
+          "box": [
+            530,
+            617,
+            1105,
+            809
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.19993600249290466,
+          "box": [
+            416,
+            668,
+            994,
+            853
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 12,
+      "filename": "012.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\012.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 456,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.7579654455184937,
+          "box": [
+            415,
+            665,
+            1000,
+            850
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.3157968521118164,
+          "box": [
+            417,
+            667,
+            994,
+            851
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.27780309319496155,
+          "box": [
+            411,
+            199,
+            1013,
+            675
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.1651131808757782,
+          "box": [
+            426,
+            169,
+            1058,
+            651
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 13,
+      "filename": "013.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\013.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 428,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8455570340156555,
+          "box": [
+            420,
+            667,
+            1000,
+            850
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.4110829532146454,
+          "box": [
+            428,
+            160,
+            1040,
+            652
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 14,
+      "filename": "014.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\014.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 568,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.3849785327911377,
+          "box": [
+            415,
+            666,
+            1011,
+            852
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.23779141902923584,
+          "box": [
+            418,
+            671,
+            996,
+            852
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.21605044603347778,
+          "box": [
+            529,
+            597,
+            1111,
+            806
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 15,
+      "filename": "015.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\015.jpg",
+      "success": true,
+      "result_code": "W001",
+      "expected": "W001",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 461,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8577150106430054,
+          "box": [
+            240,
+            531,
+            461,
+            628
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.42337942123413086,
+          "box": [
+            244,
+            283,
+            466,
+            523
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.24611343443393707,
+          "box": [
+            195,
+            605,
+            778,
+            789
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.23222535848617554,
+          "box": [
+            244,
+            284,
+            469,
+            525
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W001",
+      "ocr_partial": null
+    },
+    {
+      "index": 16,
+      "filename": "016.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\016.jpg",
+      "success": true,
+      "result_code": "W003",
+      "expected": "W003",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 519,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8201071619987488,
+          "box": [
+            292,
+            611,
+            506,
+            706
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.6836277842521667,
+          "box": [
+            292,
+            372,
+            506,
+            608
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W003",
+      "ocr_partial": null
+    },
+    {
+      "index": 17,
+      "filename": "017.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\017.jpg",
+      "success": true,
+      "result_code": "W003",
+      "expected": "W003",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 402,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.7951640486717224,
+          "box": [
+            298,
+            610,
+            512,
+            704
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7166102528572083,
+          "box": [
+            295,
+            371,
+            508,
+            604
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W003",
+      "ocr_partial": null
+    },
+    {
+      "index": 18,
+      "filename": "018.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\018.jpg",
+      "success": true,
+      "result_code": "W038",
+      "expected": "W038",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 518,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9609499573707581,
+          "box": [
+            426,
+            665,
+            992,
+            845
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8421721458435059,
+          "box": [
+            405,
+            203,
+            999,
+            653
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7001072764396667,
+          "box": [
+            394,
+            200,
+            991,
+            648
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W038",
+      "ocr_partial": null
+    },
+    {
+      "index": 19,
+      "filename": "019.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\019.jpg",
+      "success": true,
+      "result_code": "W024",
+      "expected": "W024",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 159,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.83407062292099,
+          "box": [
+            428,
+            677,
+            990,
+            846
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7296714782714844,
+          "box": [
+            419,
+            172,
+            1032,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.33269616961479187,
+          "box": [
+            520,
+            638,
+            753,
+            736
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W024",
+      "ocr_partial": null
+    },
+    {
+      "index": 20,
+      "filename": "020.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\020.jpg",
+      "success": true,
+      "result_code": "W029",
+      "expected": "W029",
+      "is_match": true,
+      "method": "Modulabgleich",
+      "method_detail": "DataMatrix Modulabgleich (NCC 0.85, Marge 0.26)",
+      "confidence": 0.85,
+      "duration_ms": 812,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8792011737823486,
+          "box": [
+            418,
+            673,
+            995,
+            847
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8673182725906372,
+          "box": [
+            422,
+            169,
+            1033,
+            661
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W029",
+      "ocr_partial": null
+    },
+    {
+      "index": 21,
+      "filename": "021.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\021.jpg",
+      "success": true,
+      "result_code": "W039",
+      "expected": "W039",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 525,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9534751772880554,
+          "box": [
+            424,
+            188,
+            1024,
+            657
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.940301775932312,
+          "box": [
+            431,
+            674,
+            996,
+            848
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W039",
+      "ocr_partial": null
+    },
+    {
+      "index": 22,
+      "filename": "022.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\022.jpg",
+      "success": true,
+      "result_code": "W038",
+      "expected": "W038",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 453,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9431858062744141,
+          "box": [
+            426,
+            669,
+            1003,
+            845
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8158831000328064,
+          "box": [
+            411,
+            182,
+            1008,
+            655
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W038",
+      "ocr_partial": null
+    },
+    {
+      "index": 23,
+      "filename": "023.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\023.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 147,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9496291279792786,
+          "box": [
+            518,
+            539,
+            759,
+            641
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8485313653945923,
+          "box": [
+            513,
+            289,
+            756,
+            541
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 24,
+      "filename": "024.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\024.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 352,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9291561841964722,
+          "box": [
+            497,
+            359,
+            739,
+            460
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8086081147193909,
+          "box": [
+            488,
+            106,
+            734,
+            369
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 25,
+      "filename": "025.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\025.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 438,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9554948210716248,
+          "box": [
+            419,
+            666,
+            1002,
+            844
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.9286301732063293,
+          "box": [
+            429,
+            182,
+            1035,
+            655
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 26,
+      "filename": "026.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\026.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 326,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9759798049926758,
+          "box": [
+            416,
+            198,
+            1029,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9401161074638367,
+          "box": [
+            424,
+            665,
+            1003,
+            843
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 27,
+      "filename": "027.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\027.jpg",
+      "success": true,
+      "result_code": "W040",
+      "expected": "W040",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 305,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.7937235832214355,
+          "box": [
+            423,
+            172,
+            1030,
+            646
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.6720908880233765,
+          "box": [
+            426,
+            663,
+            1001,
+            841
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.1799003779888153,
+          "box": [
+            399,
+            112,
+            1036,
+            626
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W040",
+      "ocr_partial": null
+    },
+    {
+      "index": 28,
+      "filename": "028.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\028.jpg",
+      "success": true,
+      "result_code": "W053",
+      "expected": "W053",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 323,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8873101472854614,
+          "box": [
+            521,
+            398,
+            748,
+            497
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.5457084774971008,
+          "box": [
+            522,
+            155,
+            749,
+            404
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.3897065222263336,
+          "box": [
+            432,
+            663,
+            1010,
+            845
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W053",
+      "ocr_partial": null
+    },
+    {
+      "index": 29,
+      "filename": "029.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\029.jpg",
+      "success": true,
+      "result_code": "W029",
+      "expected": "W029",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 138,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8990187048912048,
+          "box": [
+            534,
+            582,
+            758,
+            679
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7125793099403381,
+          "box": [
+            435,
+            174,
+            1049,
+            653
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.6075747013092041,
+          "box": [
+            537,
+            347,
+            764,
+            584
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.3037879467010498,
+          "box": [
+            440,
+            660,
+            1018,
+            846
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W029",
+      "ocr_partial": null
+    },
+    {
+      "index": 30,
+      "filename": "030.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\030.jpg",
+      "success": true,
+      "result_code": "W024",
+      "expected": "W024",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 94,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9671801924705505,
+          "box": [
+            420,
+            667,
+            1001,
+            844
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.9448920488357544,
+          "box": [
+            422,
+            192,
+            1016,
+            658
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W024",
+      "ocr_partial": null
+    },
+    {
+      "index": 31,
+      "filename": "031.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\031.jpg",
+      "success": true,
+      "result_code": "W024",
+      "expected": "W024",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 92,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.7965914011001587,
+          "box": [
+            510,
+            283,
+            748,
+            526
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.5522260665893555,
+          "box": [
+            424,
+            173,
+            1025,
+            650
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.4956100285053253,
+          "box": [
+            423,
+            665,
+            991,
+            846
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.2751590311527252,
+          "box": [
+            510,
+            526,
+            750,
+            622
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.1536015272140503,
+          "box": [
+            509,
+            525,
+            749,
+            620
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W024",
+      "ocr_partial": null
+    },
+    {
+      "index": 32,
+      "filename": "032.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\032.jpg",
+      "success": true,
+      "result_code": "W053",
+      "expected": "W053",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 97,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9240608811378479,
+          "box": [
+            498,
+            523,
+            726,
+            616
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.6448647975921631,
+          "box": [
+            496,
+            281,
+            726,
+            523
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.30504655838012695,
+          "box": [
+            424,
+            173,
+            1026,
+            652
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.18233062326908112,
+          "box": [
+            429,
+            664,
+            996,
+            847
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W053",
+      "ocr_partial": null
+    },
+    {
+      "index": 33,
+      "filename": "033.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\033.jpg",
+      "success": true,
+      "result_code": "W038",
+      "expected": "W038",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 456,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.967581570148468,
+          "box": [
+            425,
+            663,
+            1001,
+            844
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8347283005714417,
+          "box": [
+            405,
+            204,
+            1004,
+            652
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.5281745791435242,
+          "box": [
+            394,
+            201,
+            994,
+            648
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W038",
+      "ocr_partial": null
+    },
+    {
+      "index": 34,
+      "filename": "034.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\034.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 392,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9627417922019958,
+          "box": [
+            421,
+            668,
+            1000,
+            845
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.9348740577697754,
+          "box": [
+            427,
+            191,
+            1028,
+            657
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 35,
+      "filename": "035.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\035.jpg",
+      "success": true,
+      "result_code": "W053",
+      "expected": "W053",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 437,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9451870918273926,
+          "box": [
+            421,
+            666,
+            1004,
+            844
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.9256829023361206,
+          "box": [
+            417,
+            189,
+            1012,
+            657
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W053",
+      "ocr_partial": null
+    },
+    {
+      "index": 36,
+      "filename": "036.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\036.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 418,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9390362501144409,
+          "box": [
+            533,
+            704,
+            765,
+            795
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.6622602939605713,
+          "box": [
+            531,
+            465,
+            757,
+            704
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.42551562190055847,
+          "box": [
+            531,
+            464,
+            762,
+            705
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 37,
+      "filename": "037.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\037.jpg",
+      "success": true,
+      "result_code": "W053",
+      "expected": "W053",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 139,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.8774751424789429,
+          "box": [
+            471,
+            186,
+            708,
+            441
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.4381365478038788,
+          "box": [
+            470,
+            441,
+            707,
+            547
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.2523839771747589,
+          "box": [
+            438,
+            662,
+            1017,
+            848
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W053",
+      "ocr_partial": null
+    },
+    {
+      "index": 38,
+      "filename": "038.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\038.jpg",
+      "success": true,
+      "result_code": "W040",
+      "expected": "W040",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 514,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9473229050636292,
+          "box": [
+            424,
+            193,
+            1023,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9230930209159851,
+          "box": [
+            420,
+            664,
+            1000,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W040",
+      "ocr_partial": null
+    },
+    {
+      "index": 39,
+      "filename": "039.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\039.jpg",
+      "success": true,
+      "result_code": "W029",
+      "expected": "W029",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_median3)",
+      "confidence": 1.0,
+      "duration_ms": 511,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.680083692073822,
+          "box": [
+            507,
+            194,
+            744,
+            442
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.5648686289787292,
+          "box": [
+            507,
+            439,
+            749,
+            541
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.30033978819847107,
+          "box": [
+            504,
+            437,
+            748,
+            537
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.17753547430038452,
+          "box": [
+            505,
+            191,
+            746,
+            445
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W029",
+      "ocr_partial": null
+    },
+    {
+      "index": 40,
+      "filename": "040.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\040.jpg",
+      "success": true,
+      "result_code": "W053",
+      "expected": "W053",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 180,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.7899366021156311,
+          "box": [
+            434,
+            678,
+            999,
+            845
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.7343236207962036,
+          "box": [
+            504,
+            647,
+            723,
+            744
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.20351958274841309,
+          "box": [
+            364,
+            88,
+            1006,
+            637
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W053",
+      "ocr_partial": null
+    },
+    {
+      "index": 41,
+      "filename": "041.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\041.jpg",
+      "success": true,
+      "result_code": "W053",
+      "expected": "W053",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 369,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9430342316627502,
+          "box": [
+            450,
+            328,
+            689,
+            430
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.28375348448753357,
+          "box": [
+            447,
+            80,
+            684,
+            337
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.16213728487491608,
+          "box": [
+            447,
+            81,
+            682,
+            333
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W053",
+      "ocr_partial": null
+    },
+    {
+      "index": 42,
+      "filename": "042.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\042.jpg",
+      "success": true,
+      "result_code": "W029",
+      "expected": "W029",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
+      "confidence": 1.0,
+      "duration_ms": 486,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9359785914421082,
+          "box": [
+            528,
+            667,
+            758,
+            765
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.9076551795005798,
+          "box": [
+            516,
+            427,
+            750,
+            665
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.22859208285808563,
+          "box": [
+            421,
+            658,
+            1018,
+            849
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W029",
+      "ocr_partial": null
+    },
+    {
+      "index": 43,
+      "filename": "043.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\043.jpg",
+      "success": true,
+      "result_code": "W029",
+      "expected": "W029",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
+      "confidence": 1.0,
+      "duration_ms": 457,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.87826007604599,
+          "box": [
+            457,
+            353,
+            700,
+            453
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7002972960472107,
+          "box": [
+            455,
+            101,
+            694,
+            351
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W029",
+      "ocr_partial": null
+    },
+    {
+      "index": 44,
+      "filename": "044.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\044.jpg",
+      "success": true,
+      "result_code": "W029",
+      "expected": "W029",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 278,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9661205410957336,
+          "box": [
+            427,
+            668,
+            988,
+            846
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.6858648061752319,
+          "box": [
+            398,
+            188,
+            994,
+            649
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.4571074843406677,
+          "box": [
+            403,
+            179,
+            1002,
+            655
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W029",
+      "ocr_partial": null
+    },
+    {
+      "index": 45,
+      "filename": "045.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\045.jpg",
+      "success": true,
+      "result_code": "W029",
+      "expected": "W029",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_clahe_median5)",
+      "confidence": 1.0,
+      "duration_ms": 303,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9364562034606934,
+          "box": [
+            422,
+            666,
+            1004,
+            844
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.28686463832855225,
+          "box": [
+            435,
+            183,
+            1040,
+            658
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W029",
+      "ocr_partial": null
+    },
+    {
+      "index": 46,
+      "filename": "046.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\046.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 294,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8998948931694031,
+          "box": [
+            434,
+            678,
+            996,
+            848
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.6055147647857666,
+          "box": [
+            418,
+            159,
+            1031,
+            652
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.30404341220855713,
+          "box": [
+            522,
+            642,
+            750,
+            736
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.18046806752681732,
+          "box": [
+            521,
+            639,
+            748,
+            733
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.16359764337539673,
+          "box": [
+            524,
+            404,
+            743,
+            635
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 47,
+      "filename": "047.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\047.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 88,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9614520072937012,
+          "box": [
+            494,
+            423,
+            717,
+            659
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.771047055721283,
+          "box": [
+            501,
+            659,
+            721,
+            753
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 48,
+      "filename": "048.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\048.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 426,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9390586614608765,
+          "box": [
+            412,
+            205,
+            1022,
+            654
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9299950003623962,
+          "box": [
+            427,
+            663,
+            1007,
+            841
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 49,
+      "filename": "049.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\049.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 504,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9451298713684082,
+          "box": [
+            413,
+            205,
+            1022,
+            654
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.92525714635849,
+          "box": [
+            426,
+            662,
+            1007,
+            841
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 50,
+      "filename": "050.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\050.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon + 2 Löschungen)",
+      "confidence": 1.0,
+      "duration_ms": 541,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9392743706703186,
+          "box": [
+            412,
+            205,
+            1021,
+            654
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.928739070892334,
+          "box": [
+            426,
+            662,
+            1008,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 51,
+      "filename": "051.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\051.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 502,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9715147018432617,
+          "box": [
+            414,
+            200,
+            1028,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9308218955993652,
+          "box": [
+            424,
+            665,
+            1003,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 52,
+      "filename": "052.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\052.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 461,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9712061882019043,
+          "box": [
+            414,
+            200,
+            1028,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9342657923698425,
+          "box": [
+            425,
+            665,
+            1005,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 53,
+      "filename": "053.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\053.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 542,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9724872708320618,
+          "box": [
+            414,
+            200,
+            1027,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.952507495880127,
+          "box": [
+            425,
+            665,
+            1006,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 54,
+      "filename": "054.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\054.jpg",
+      "success": true,
+      "result_code": "W039",
+      "expected": "W039",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 851,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.6084333658218384,
+          "box": [
+            428,
+            664,
+            997,
+            845
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.5777631402015686,
+          "box": [
+            425,
+            178,
+            1024,
+            652
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.32060396671295166,
+          "box": [
+            402,
+            107,
+            1036,
+            629
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W039",
+      "ocr_partial": null
+    },
+    {
+      "index": 55,
+      "filename": "055.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\055.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
+      "confidence": 1.0,
+      "duration_ms": 533,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9686993360519409,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.942943274974823,
+          "box": [
+            517,
+            690,
+            751,
+            787
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 56,
+      "filename": "056.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\056.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 446,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9707515835762024,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9378143548965454,
+          "box": [
+            517,
+            690,
+            750,
+            787
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 57,
+      "filename": "057.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\057.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
+      "confidence": 1.0,
+      "duration_ms": 557,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9703027606010437,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9380936622619629,
+          "box": [
+            517,
+            690,
+            750,
+            787
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 58,
+      "filename": "058.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\058.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
+      "confidence": 1.0,
+      "duration_ms": 575,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9717778563499451,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9352221488952637,
+          "box": [
+            517,
+            690,
+            750,
+            787
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 59,
+      "filename": "059.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\059.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_erode3)",
+      "confidence": 1.0,
+      "duration_ms": 597,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9715686440467834,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.94230717420578,
+          "box": [
+            517,
+            690,
+            750,
+            786
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 60,
+      "filename": "060.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\060.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 418,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9712376594543457,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9402793049812317,
+          "box": [
+            517,
+            690,
+            750,
+            787
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 61,
+      "filename": "061.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\061.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 251,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9726866483688354,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9513281583786011,
+          "box": [
+            516,
+            689,
+            749,
+            786
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 62,
+      "filename": "062.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\062.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 252,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9700731635093689,
+          "box": [
+            517,
+            454,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9494675993919373,
+          "box": [
+            516,
+            688,
+            749,
+            786
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 63,
+      "filename": "063.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\063.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 243,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9727298021316528,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9517172574996948,
+          "box": [
+            516,
+            688,
+            750,
+            785
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 64,
+      "filename": "064.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\064.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon + 2 Löschungen)",
+      "confidence": 1.0,
+      "duration_ms": 254,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9731386303901672,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9498306512832642,
+          "box": [
+            516,
+            688,
+            749,
+            785
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 65,
+      "filename": "065.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\065.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 416,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9706048965454102,
+          "box": [
+            517,
+            454,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9475170373916626,
+          "box": [
+            516,
+            689,
+            749,
+            786
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 66,
+      "filename": "066.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\066.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 477,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9719688296318054,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9456638097763062,
+          "box": [
+            515,
+            689,
+            749,
+            786
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 67,
+      "filename": "067.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\067.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 433,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9730464220046997,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9457762837409973,
+          "box": [
+            516,
+            689,
+            749,
+            786
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 68,
+      "filename": "068.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\068.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 450,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9698810577392578,
+          "box": [
+            517,
+            455,
+            744,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9485144019126892,
+          "box": [
+            516,
+            689,
+            749,
+            786
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 69,
+      "filename": "069.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\069.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 382,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9711527824401855,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.946792721748352,
+          "box": [
+            516,
+            689,
+            749,
+            786
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 70,
+      "filename": "070.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\070.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 414,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9709926843643188,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9481008648872375,
+          "box": [
+            516,
+            688,
+            750,
+            786
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 71,
+      "filename": "071.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\071.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 435,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9710037112236023,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9475408792495728,
+          "box": [
+            516,
+            689,
+            749,
+            785
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 72,
+      "filename": "072.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\072.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 461,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9718095064163208,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9476983547210693,
+          "box": [
+            516,
+            689,
+            749,
+            786
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 73,
+      "filename": "073.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\073.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 457,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9718074798583984,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.947962760925293,
+          "box": [
+            516,
+            688,
+            749,
+            785
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 74,
+      "filename": "074.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\074.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 406,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9722744822502136,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.946346640586853,
+          "box": [
+            516,
+            689,
+            749,
+            786
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 75,
+      "filename": "075.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\075.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 406,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9716812968254089,
+          "box": [
+            517,
+            455,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9506219029426575,
+          "box": [
+            516,
+            688,
+            749,
+            785
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 76,
+      "filename": "076.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\076.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 404,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.971452534198761,
+          "box": [
+            517,
+            454,
+            745,
+            693
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9507496953010559,
+          "box": [
+            516,
+            689,
+            750,
+            785
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 77,
+      "filename": "077.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\077.jpg",
+      "success": true,
+      "result_code": "W044",
+      "expected": "W044",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 238,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.934948742389679,
+          "box": [
+            428,
+            668,
+            997,
+            846
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.9281226992607117,
+          "box": [
+            422,
+            182,
+            1019,
+            652
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W044",
+      "ocr_partial": null
+    },
+    {
+      "index": 78,
+      "filename": "078.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\078.jpg",
+      "success": true,
+      "result_code": "W044",
+      "expected": "W044",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 354,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9318300485610962,
+          "box": [
+            425,
+            182,
+            1023,
+            656
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8975294232368469,
+          "box": [
+            434,
+            669,
+            993,
+            845
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W044",
+      "ocr_partial": null
+    },
+    {
+      "index": 79,
+      "filename": "079.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\079.jpg",
+      "success": true,
+      "result_code": "W025",
+      "expected": "W025",
+      "is_match": true,
+      "method": "Modulabgleich",
+      "method_detail": "DataMatrix Modulabgleich (NCC 0.79, Marge 0.28)",
+      "confidence": 0.79,
+      "duration_ms": 1010,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.943577229976654,
+          "box": [
+            421,
+            672,
+            999,
+            846
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7798877954483032,
+          "box": [
+            419,
+            161,
+            1031,
+            660
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.15666843950748444,
+          "box": [
+            395,
+            104,
+            1043,
+            639
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W025",
+      "ocr_partial": null
+    },
+    {
+      "index": 80,
+      "filename": "080.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\080.jpg",
+      "success": true,
+      "result_code": "W053",
+      "expected": "W053",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 162,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.937798023223877,
+          "box": [
+            453,
+            326,
+            686,
+            428
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.4078848958015442,
+          "box": [
+            423,
+            190,
+            1016,
+            650
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.3739732503890991,
+          "box": [
+            449,
+            80,
+            679,
+            332
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W053",
+      "ocr_partial": null
+    },
+    {
+      "index": 81,
+      "filename": "081.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\081.jpg",
+      "success": true,
+      "result_code": "W029",
+      "expected": "W029",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 356,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.958159327507019,
+          "box": [
+            532,
+            686,
+            759,
+            784
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.1696317493915558,
+          "box": [
+            532,
+            456,
+            758,
+            688
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W029",
+      "ocr_partial": null
+    },
+    {
+      "index": 82,
+      "filename": "082.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\082.jpg",
+      "success": true,
+      "result_code": "W029",
+      "expected": "W029",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 143,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9018424153327942,
+          "box": [
+            494,
+            564,
+            722,
+            660
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8531472682952881,
+          "box": [
+            483,
+            323,
+            716,
+            562
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.4877186715602875,
+          "box": [
+            417,
+            176,
+            1023,
+            653
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.2875019907951355,
+          "box": [
+            423,
+            662,
+            1002,
+            846
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W029",
+      "ocr_partial": null
+    },
+    {
+      "index": 83,
+      "filename": "083.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\083.jpg",
+      "success": true,
+      "result_code": "W053",
+      "expected": "W053",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 428,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9663735032081604,
+          "box": [
+            430,
+            660,
+            1004,
+            842
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.9319126605987549,
+          "box": [
+            411,
+            206,
+            1011,
+            652
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W053",
+      "ocr_partial": null
+    },
+    {
+      "index": 84,
+      "filename": "084.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\084.jpg",
+      "success": true,
+      "result_code": "W044",
+      "expected": "W044",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 404,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9591235518455505,
+          "box": [
+            425,
+            193,
+            1025,
+            663
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9472205638885498,
+          "box": [
+            432,
+            674,
+            993,
+            847
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W044",
+      "ocr_partial": null
+    },
+    {
+      "index": 85,
+      "filename": "085.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\085.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, locator_s0.35_erode3)",
+      "confidence": 1.0,
+      "duration_ms": 1567,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.7999889254570007,
+          "box": [
+            418,
+            665,
+            994,
+            844
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.634604811668396,
+          "box": [
+            395,
+            195,
+            994,
+            651
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.2350579798221588,
+          "box": [
+            411,
+            191,
+            1004,
+            655
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 86,
+      "filename": "086.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\086.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 430,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9746004343032837,
+          "box": [
+            422,
+            665,
+            1001,
+            845
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.9206339716911316,
+          "box": [
+            426,
+            188,
+            1026,
+            656
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 87,
+      "filename": "087.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\087.jpg",
+      "success": true,
+      "result_code": "W053",
+      "expected": "W053",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 522,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9534845352172852,
+          "box": [
+            423,
+            186,
+            1012,
+            657
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.789631187915802,
+          "box": [
+            432,
+            667,
+            991,
+            845
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W053",
+      "ocr_partial": null
+    },
+    {
+      "index": 88,
+      "filename": "088.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\088.jpg",
+      "success": true,
+      "result_code": "W040",
+      "expected": "W040",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 660,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9112903475761414,
+          "box": [
+            424,
+            185,
+            1018,
+            654
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8571677803993225,
+          "box": [
+            432,
+            667,
+            993,
+            845
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W040",
+      "ocr_partial": null
+    },
+    {
+      "index": 89,
+      "filename": "089.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\089.jpg",
+      "success": true,
+      "result_code": "W053",
+      "expected": "W053",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 147,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9107676148414612,
+          "box": [
+            500,
+            595,
+            731,
+            687
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8119930028915405,
+          "box": [
+            502,
+            355,
+            728,
+            593
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.6511613130569458,
+          "box": [
+            421,
+            176,
+            1027,
+            651
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.27292585372924805,
+          "box": [
+            424,
+            666,
+            1005,
+            845
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W053",
+      "ocr_partial": null
+    },
+    {
+      "index": 90,
+      "filename": "090.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\090.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 374,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9247518181800842,
+          "box": [
+            421,
+            664,
+            1008,
+            843
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8889942169189453,
+          "box": [
+            426,
+            190,
+            1023,
+            650
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 91,
+      "filename": "091.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\091.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon + 2 Löschungen)",
+      "confidence": 1.0,
+      "duration_ms": 500,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9196447730064392,
+          "box": [
+            432,
+            673,
+            998,
+            847
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7010131478309631,
+          "box": [
+            421,
+            159,
+            1023,
+            659
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.1570049375295639,
+          "box": [
+            436,
+            675,
+            996,
+            846
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 92,
+      "filename": "092.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\092.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 418,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9522041082382202,
+          "box": [
+            512,
+            457,
+            742,
+            694
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.7096114158630371,
+          "box": [
+            513,
+            691,
+            744,
+            788
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.4477059841156006,
+          "box": [
+            512,
+            690,
+            745,
+            784
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 93,
+      "filename": "093.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\093.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 266,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9503090381622314,
+          "box": [
+            513,
+            457,
+            742,
+            694
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.6957629323005676,
+          "box": [
+            513,
+            690,
+            744,
+            788
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.4721037745475769,
+          "box": [
+            511,
+            690,
+            745,
+            784
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 94,
+      "filename": "094.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\094.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 252,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9477186799049377,
+          "box": [
+            513,
+            457,
+            742,
+            694
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.6465417146682739,
+          "box": [
+            512,
+            690,
+            744,
+            788
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.48683449625968933,
+          "box": [
+            511,
+            690,
+            745,
+            784
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 95,
+      "filename": "095.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\095.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 220,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9498115181922913,
+          "box": [
+            512,
+            457,
+            742,
+            694
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.6961656212806702,
+          "box": [
+            513,
+            691,
+            744,
+            788
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.47481781244277954,
+          "box": [
+            511,
+            690,
+            745,
+            784
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 96,
+      "filename": "096.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\096.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 193,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9497790336608887,
+          "box": [
+            513,
+            457,
+            742,
+            694
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.714143693447113,
+          "box": [
+            513,
+            690,
+            745,
+            788
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.4737268388271332,
+          "box": [
+            511,
+            690,
+            745,
+            784
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 97,
+      "filename": "097.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\097.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 286,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9460588097572327,
+          "box": [
+            512,
+            457,
+            742,
+            694
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.6656650900840759,
+          "box": [
+            513,
+            690,
+            745,
+            788
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.4913333058357239,
+          "box": [
+            511,
+            690,
+            745,
+            784
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 98,
+      "filename": "098.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\098.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 430,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9488664865493774,
+          "box": [
+            513,
+            457,
+            742,
+            694
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.7722684144973755,
+          "box": [
+            513,
+            690,
+            745,
+            788
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.42274436354637146,
+          "box": [
+            511,
+            690,
+            746,
+            784
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 99,
+      "filename": "099.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\099.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 383,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9499074220657349,
+          "box": [
+            512,
+            457,
+            742,
+            694
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.7802330851554871,
+          "box": [
+            513,
+            691,
+            745,
+            788
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.42252829670906067,
+          "box": [
+            512,
+            690,
+            746,
+            784
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 100,
+      "filename": "100.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\100.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 441,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9489020109176636,
+          "box": [
+            512,
+            457,
+            742,
+            694
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.7364253401756287,
+          "box": [
+            513,
+            691,
+            745,
+            788
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.45778489112854004,
+          "box": [
+            511,
+            690,
+            746,
+            784
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 101,
+      "filename": "101.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\101.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 427,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9528905153274536,
+          "box": [
+            512,
+            457,
+            742,
+            694
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.7318195700645447,
+          "box": [
+            513,
+            690,
+            745,
+            788
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.4333164691925049,
+          "box": [
+            512,
+            690,
+            746,
+            784
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 102,
+      "filename": "102.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\102.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 404,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9503648281097412,
+          "box": [
+            513,
+            457,
+            742,
+            694
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.7695606350898743,
+          "box": [
+            513,
+            691,
+            745,
+            788
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.4142974317073822,
+          "box": [
+            512,
+            690,
+            746,
+            784
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 103,
+      "filename": "103.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\103.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 138,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9263854026794434,
+          "box": [
+            499,
+            667,
+            728,
+            763
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7107996344566345,
+          "box": [
+            496,
+            427,
+            721,
+            665
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.365344762802124,
+          "box": [
+            496,
+            428,
+            725,
+            667
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 104,
+      "filename": "104.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\104.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 465,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9445199966430664,
+          "box": [
+            416,
+            203,
+            1026,
+            657
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8595593571662903,
+          "box": [
+            422,
+            667,
+            1008,
+            843
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 105,
+      "filename": "105.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\105.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 534,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.944885790348053,
+          "box": [
+            417,
+            202,
+            1027,
+            657
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8666753768920898,
+          "box": [
+            423,
+            667,
+            1008,
+            843
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 106,
+      "filename": "106.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\106.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 497,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9464794993400574,
+          "box": [
+            415,
+            203,
+            1024,
+            657
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8708456754684448,
+          "box": [
+            421,
+            666,
+            1009,
+            844
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 107,
+      "filename": "107.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\107.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 473,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9428209662437439,
+          "box": [
+            416,
+            203,
+            1026,
+            657
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8454498052597046,
+          "box": [
+            422,
+            667,
+            1010,
+            844
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 108,
+      "filename": "108.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\108.jpg",
+      "success": true,
+      "result_code": "W005",
+      "expected": "W005",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
+      "confidence": 1.0,
+      "duration_ms": 709,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.6437066197395325,
+          "box": [
+            509,
+            815,
+            764,
+            924
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.34212595224380493,
+          "box": [
+            570,
+            780,
+            741,
+            890
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.229014053940773,
+          "box": [
+            527,
+            559,
+            751,
+            805
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.20961496233940125,
+          "box": [
+            397,
+            201,
+            1091,
+            682
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W005",
+      "ocr_partial": null
+    },
+    {
+      "index": 109,
+      "filename": "109.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\109.jpg",
+      "success": true,
+      "result_code": "W001",
+      "expected": "W001",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 265,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.7792249917984009,
+          "box": [
+            498,
+            822,
+            744,
+            925
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.33973434567451477,
+          "box": [
+            502,
+            551,
+            734,
+            807
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.3336498439311981,
+          "box": [
+            503,
+            552,
+            737,
+            805
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.2464955449104309,
+          "box": [
+            552,
+            782,
+            717,
+            888
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W001",
+      "ocr_partial": null
+    },
+    {
+      "index": 110,
+      "filename": "110.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\110.jpg",
+      "success": true,
+      "result_code": "W001",
+      "expected": "W001",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 254,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.7849335074424744,
+          "box": [
+            499,
+            822,
+            743,
+            924
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.3778080642223358,
+          "box": [
+            502,
+            552,
+            734,
+            807
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.3344694972038269,
+          "box": [
+            503,
+            553,
+            737,
+            805
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.25394970178604126,
+          "box": [
+            553,
+            782,
+            717,
+            888
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W001",
+      "ocr_partial": null
+    },
+    {
+      "index": 111,
+      "filename": "111.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\111.jpg",
+      "success": true,
+      "result_code": "W003",
+      "expected": "W003",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 252,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.8883925676345825,
+          "box": [
+            512,
+            557,
+            741,
+            806
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.6981635093688965,
+          "box": [
+            503,
+            823,
+            751,
+            929
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.15439610183238983,
+          "box": [
+            560,
+            782,
+            733,
+            893
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W003",
+      "ocr_partial": null
+    },
+    {
+      "index": 112,
+      "filename": "112.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\112.jpg",
+      "success": true,
+      "result_code": "W003",
+      "expected": "W003",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 339,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.8795374035835266,
+          "box": [
+            512,
+            557,
+            742,
+            806
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.6800984740257263,
+          "box": [
+            506,
+            822,
+            750,
+            929
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W003",
+      "ocr_partial": null
+    },
+    {
+      "index": 113,
+      "filename": "113.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\113.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 141,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8066325187683105,
+          "box": [
+            511,
+            831,
+            772,
+            936
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.6186451315879822,
+          "box": [
+            522,
+            571,
+            768,
+            831
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.40438318252563477,
+          "box": [
+            523,
+            572,
+            762,
+            829
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.3973967134952545,
+          "box": [
+            508,
+            834,
+            773,
+            943
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 114,
+      "filename": "114.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\114.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 91,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8154041767120361,
+          "box": [
+            513,
+            831,
+            772,
+            936
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.6185570955276489,
+          "box": [
+            522,
+            572,
+            768,
+            831
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.43177956342697144,
+          "box": [
+            510,
+            834,
+            773,
+            942
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.41999757289886475,
+          "box": [
+            523,
+            572,
+            762,
+            829
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 115,
+      "filename": "115.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\115.jpg",
+      "success": true,
+      "result_code": "W029",
+      "expected": "W029",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 367,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8755608201026917,
+          "box": [
+            517,
+            822,
+            780,
+            926
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7698028087615967,
+          "box": [
+            532,
+            566,
+            770,
+            813
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.1691993623971939,
+          "box": [
+            576,
+            782,
+            760,
+            898
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W029",
+      "ocr_partial": null
+    },
+    {
+      "index": 116,
+      "filename": "116.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\116.jpg",
+      "success": true,
+      "result_code": "W038",
+      "expected": "W038",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 431,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.7871504426002502,
+          "box": [
+            471,
+            815,
+            723,
+            925
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.5850695371627808,
+          "box": [
+            475,
+            552,
+            708,
+            803
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.23946313560009003,
+          "box": [
+            477,
+            554,
+            707,
+            803
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.23309023678302765,
+          "box": [
+            518,
+            777,
+            696,
+            886
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W038",
+      "ocr_partial": null
+    },
+    {
+      "index": 117,
+      "filename": "117.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\117.jpg",
+      "success": true,
+      "result_code": "W044",
+      "expected": "W044",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 163,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.8935427665710449,
+          "box": [
+            516,
+            559,
+            749,
+            809
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8230034708976746,
+          "box": [
+            503,
+            824,
+            764,
+            934
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.4008767902851105,
+          "box": [
+            560,
+            782,
+            736,
+            893
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W044",
+      "ocr_partial": null
+    },
+    {
+      "index": 118,
+      "filename": "118.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\118.jpg",
+      "success": true,
+      "result_code": "W028",
+      "expected": "W028",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 361,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8949868679046631,
+          "box": [
+            514,
+            823,
+            779,
+            930
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7988003492355347,
+          "box": [
+            533,
+            563,
+            769,
+            814
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.20502524077892303,
+          "box": [
+            578,
+            784,
+            756,
+            899
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W028",
+      "ocr_partial": null
+    },
+    {
+      "index": 119,
+      "filename": "119.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\119.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 153,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.951789915561676,
+          "box": [
+            515,
+            566,
+            757,
+            816
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9230553507804871,
+          "box": [
+            512,
+            825,
+            768,
+            930
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.20268882811069489,
+          "box": [
+            576,
+            789,
+            743,
+            902
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 120,
+      "filename": "120.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\120.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 343,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9512773156166077,
+          "box": [
+            515,
+            566,
+            757,
+            816
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9251503944396973,
+          "box": [
+            513,
+            825,
+            768,
+            930
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.20698167383670807,
+          "box": [
+            576,
+            790,
+            744,
+            902
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 121,
+      "filename": "121.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\121.jpg",
+      "success": true,
+      "result_code": "P229",
+      "expected": "P229",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_clahe_median5)",
+      "confidence": 1.0,
+      "duration_ms": 662,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.7847180962562561,
+          "box": [
+            385,
+            203,
+            1062,
+            748
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.3332405090332031,
+          "box": [
+            555,
+            782,
+            730,
+            895
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.29880490899086,
+          "box": [
+            518,
+            561,
+            738,
+            804
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P229",
+      "ocr_partial": null
+    },
+    {
+      "index": 122,
+      "filename": "122.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\122.jpg",
+      "success": true,
+      "result_code": "P229",
+      "expected": "P229",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_clahe_median5)",
+      "confidence": 1.0,
+      "duration_ms": 456,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.6944876313209534,
+          "box": [
+            516,
+            560,
+            740,
+            806
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.5514626502990723,
+          "box": [
+            556,
+            783,
+            730,
+            898
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P229",
+      "ocr_partial": null
+    },
+    {
+      "index": 123,
+      "filename": "123.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\123.jpg",
+      "success": true,
+      "result_code": "P230",
+      "expected": "P230",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 169,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9433847069740295,
+          "box": [
+            514,
+            565,
+            755,
+            818
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8929864168167114,
+          "box": [
+            507,
+            828,
+            764,
+            936
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.17042897641658783,
+          "box": [
+            572,
+            793,
+            739,
+            905
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P230",
+      "ocr_partial": null
+    },
+    {
+      "index": 124,
+      "filename": "124.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\124.jpg",
+      "success": true,
+      "result_code": "W040",
+      "expected": "W040",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
+      "confidence": 1.0,
+      "duration_ms": 84,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.8756189346313477,
+          "box": [
+            515,
+            555,
+            748,
+            807
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.833897054195404,
+          "box": [
+            506,
+            818,
+            764,
+            928
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.37528476119041443,
+          "box": [
+            560,
+            779,
+            736,
+            888
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W040",
+      "ocr_partial": null
+    },
+    {
+      "index": 125,
+      "filename": "125.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\125.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 365,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.5430992245674133,
+          "box": [
+            404,
+            204,
+            1013,
+            675
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.5322480797767639,
+          "box": [
+            412,
+            666,
+            1006,
+            852
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.2988358438014984,
+          "box": [
+            415,
+            670,
+            994,
+            854
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.2899702787399292,
+          "box": [
+            527,
+            610,
+            1105,
+            808
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 126,
+      "filename": "126.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\126.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 406,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8337666392326355,
+          "box": [
+            420,
+            666,
+            1000,
+            851
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.38527369499206543,
+          "box": [
+            430,
+            161,
+            1037,
+            650
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 127,
+      "filename": "127.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\127.jpg",
+      "success": true,
+      "result_code": "W005",
+      "expected": "W005",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon + 2 Löschungen)",
+      "confidence": 1.0,
+      "duration_ms": 546,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.5355797410011292,
+          "box": [
+            430,
+            168,
+            1086,
+            665
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.2028382122516632,
+          "box": [
+            501,
+            588,
+            1164,
+            810
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.15351532399654388,
+          "box": [
+            734,
+            600,
+            890,
+            702
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W005",
+      "ocr_partial": null
+    },
+    {
+      "index": 128,
+      "filename": "128.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\128.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 530,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9445199966430664,
+          "box": [
+            416,
+            203,
+            1026,
+            657
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8595593571662903,
+          "box": [
+            422,
+            667,
+            1008,
+            843
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 129,
+      "filename": "129.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\129.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 547,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.944885790348053,
+          "box": [
+            417,
+            202,
+            1027,
+            657
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8666753768920898,
+          "box": [
+            423,
+            667,
+            1008,
+            843
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 130,
+      "filename": "130.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\130.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 526,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9464794993400574,
+          "box": [
+            415,
+            203,
+            1024,
+            657
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8708456754684448,
+          "box": [
+            421,
+            666,
+            1009,
+            844
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 131,
+      "filename": "131.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\131.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 492,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9428209662437439,
+          "box": [
+            416,
+            203,
+            1026,
+            657
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8454498052597046,
+          "box": [
+            422,
+            667,
+            1010,
+            844
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 132,
+      "filename": "132.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\132.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 335,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9528400897979736,
+          "box": [
+            417,
+            201,
+            1027,
+            657
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8626424670219421,
+          "box": [
+            421,
+            667,
+            1007,
+            843
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 133,
+      "filename": "133.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\133.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 366,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9494499564170837,
+          "box": [
+            417,
+            203,
+            1028,
+            657
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.8440696597099304,
+          "box": [
+            420,
+            667,
+            1007,
+            843
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 134,
+      "filename": "134.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\134.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 762,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.7607424855232239,
+          "box": [
+            506,
+            224,
+            745,
+            479
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.7243629097938538,
+          "box": [
+            431,
+            666,
+            992,
+            845
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.5830447673797607,
+          "box": [
+            427,
+            191,
+            1025,
+            653
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.49080365896224976,
+          "box": [
+            508,
+            474,
+            745,
+            577
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 135,
+      "filename": "135.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\135.jpg",
+      "success": true,
+      "result_code": "W040",
+      "expected": "W040",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 485,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9690809845924377,
+          "box": [
+            413,
+            200,
+            1022,
+            653
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9528325200080872,
+          "box": [
+            427,
+            662,
+            1004,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W040",
+      "ocr_partial": null
+    },
+    {
+      "index": 136,
+      "filename": "136.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\136.jpg",
+      "success": true,
+      "result_code": "W040",
+      "expected": "W040",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 523,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9685045480728149,
+          "box": [
+            414,
+            201,
+            1022,
+            653
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9500457048416138,
+          "box": [
+            428,
+            662,
+            1005,
+            841
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W040",
+      "ocr_partial": null
+    },
+    {
+      "index": 137,
+      "filename": "137.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\137.jpg",
+      "success": true,
+      "result_code": "W040",
+      "expected": "W040",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 507,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.969921886920929,
+          "box": [
+            414,
+            201,
+            1022,
+            653
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9514553546905518,
+          "box": [
+            430,
+            661,
+            1006,
+            841
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W040",
+      "ocr_partial": null
+    },
+    {
+      "index": 138,
+      "filename": "138.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\138.jpg",
+      "success": true,
+      "result_code": "W040",
+      "expected": "W040",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 537,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9715269804000854,
+          "box": [
+            414,
+            202,
+            1023,
+            653
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9523110389709473,
+          "box": [
+            428,
+            662,
+            1003,
+            841
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W040",
+      "ocr_partial": null
+    },
+    {
+      "index": 139,
+      "filename": "139.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\139.jpg",
+      "success": true,
+      "result_code": "W040",
+      "expected": "W040",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 518,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9662778973579407,
+          "box": [
+            412,
+            202,
+            1021,
+            654
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9524757266044617,
+          "box": [
+            427,
+            662,
+            1003,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W040",
+      "ocr_partial": null
+    },
+    {
+      "index": 140,
+      "filename": "140.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\140.jpg",
+      "success": true,
+      "result_code": "W040",
+      "expected": "W040",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 551,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9638100862503052,
+          "box": [
+            412,
+            201,
+            1020,
+            653
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9528530836105347,
+          "box": [
+            427,
+            662,
+            1003,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W040",
+      "ocr_partial": null
+    },
+    {
+      "index": 141,
+      "filename": "141.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\141.jpg",
+      "success": true,
+      "result_code": "W040",
+      "expected": "W040",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 491,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9682641625404358,
+          "box": [
+            413,
+            200,
+            1023,
+            653
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9460034370422363,
+          "box": [
+            427,
+            661,
+            1005,
+            841
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W040",
+      "ocr_partial": null
+    },
+    {
+      "index": 142,
+      "filename": "142.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\142.jpg",
+      "success": true,
+      "result_code": "W031",
+      "expected": "W031",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 419,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9223728179931641,
+          "box": [
+            425,
+            197,
+            1014,
+            654
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.6018794775009155,
+          "box": [
+            430,
+            666,
+            994,
+            848
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W031",
+      "ocr_partial": null
+    },
+    {
+      "index": 143,
+      "filename": "143.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\143.jpg",
+      "success": true,
+      "result_code": "W029",
+      "expected": "W029",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 482,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.8318951725959778,
+          "box": [
+            511,
+            285,
+            740,
+            523
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.6783235669136047,
+          "box": [
+            518,
+            527,
+            743,
+            625
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.19305235147476196,
+          "box": [
+            425,
+            180,
+            1032,
+            650
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.17758119106292725,
+          "box": [
+            433,
+            658,
+            1019,
+            845
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W029",
+      "ocr_partial": null
+    },
+    {
+      "index": 144,
+      "filename": "144.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\144.jpg",
+      "success": true,
+      "result_code": "W053",
+      "expected": "W053",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 259,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.8986923098564148,
+          "box": [
+            435,
+            219,
+            670,
+            469
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.883937656879425,
+          "box": [
+            433,
+            465,
+            668,
+            565
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.21039025485515594,
+          "box": [
+            442,
+            665,
+            1021,
+            850
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W053",
+      "ocr_partial": null
+    },
+    {
+      "index": 145,
+      "filename": "145.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\145.jpg",
+      "success": true,
+      "result_code": "W039",
+      "expected": "W039",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 234,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.8632386326789856,
+          "box": [
+            443,
+            212,
+            673,
+            456
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.6516067385673523,
+          "box": [
+            444,
+            463,
+            676,
+            560
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.3242056965827942,
+          "box": [
+            445,
+            460,
+            675,
+            556
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.20151595771312714,
+          "box": [
+            436,
+            664,
+            1021,
+            849
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W039",
+      "ocr_partial": null
+    },
+    {
+      "index": 146,
+      "filename": "146.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\146.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 317,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9657860398292542,
+          "box": [
+            519,
+            687,
+            753,
+            785
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.923785924911499,
+          "box": [
+            519,
+            455,
+            748,
+            692
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 147,
+      "filename": "147.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\147.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 362,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9669327735900879,
+          "box": [
+            519,
+            687,
+            753,
+            785
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.928398609161377,
+          "box": [
+            519,
+            456,
+            748,
+            692
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 148,
+      "filename": "148.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\148.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 370,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9682164788246155,
+          "box": [
+            518,
+            687,
+            753,
+            785
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.919512152671814,
+          "box": [
+            519,
+            455,
+            748,
+            692
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 149,
+      "filename": "149.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\149.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 379,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9653744697570801,
+          "box": [
+            518,
+            687,
+            753,
+            785
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.9252902269363403,
+          "box": [
+            519,
+            455,
+            748,
+            692
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 150,
+      "filename": "150.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\150.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 408,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9648787975311279,
+          "box": [
+            518,
+            687,
+            753,
+            785
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.9252145886421204,
+          "box": [
+            519,
+            455,
+            748,
+            692
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 151,
+      "filename": "151.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\151.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 451,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9595988988876343,
+          "box": [
+            534,
+            702,
+            769,
+            798
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7842357158660889,
+          "box": [
+            534,
+            463,
+            765,
+            703
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 152,
+      "filename": "152.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\152.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 564,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.969269871711731,
+          "box": [
+            533,
+            702,
+            769,
+            799
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7841894030570984,
+          "box": [
+            534,
+            463,
+            765,
+            703
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.15074463188648224,
+          "box": [
+            1306,
+            346,
+            1440,
+            830
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 153,
+      "filename": "153.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\153.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 438,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9681243896484375,
+          "box": [
+            533,
+            702,
+            770,
+            800
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7999016046524048,
+          "box": [
+            534,
+            464,
+            765,
+            703
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 154,
+      "filename": "154.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\154.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 418,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9632632732391357,
+          "box": [
+            533,
+            702,
+            770,
+            799
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8028703927993774,
+          "box": [
+            534,
+            464,
+            765,
+            703
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.1538608968257904,
+          "box": [
+            1308,
+            346,
+            1440,
+            831
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 155,
+      "filename": "155.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\155.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 418,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9620761871337891,
+          "box": [
+            534,
+            702,
+            770,
+            799
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7637621760368347,
+          "box": [
+            534,
+            464,
+            764,
+            703
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.16017736494541168,
+          "box": [
+            1311,
+            345,
+            1440,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 156,
+      "filename": "156.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\156.jpg",
+      "success": true,
+      "result_code": "P938",
+      "expected": "P938",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 392,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9635928869247437,
+          "box": [
+            533,
+            702,
+            770,
+            799
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7719802260398865,
+          "box": [
+            533,
+            464,
+            764,
+            703
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.18439480662345886,
+          "box": [
+            1313,
+            345,
+            1440,
+            845
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "P938",
+      "ocr_partial": null
+    },
+    {
+      "index": 157,
+      "filename": "157.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\157.jpg",
+      "success": true,
+      "result_code": "W040",
+      "expected": "W040",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 631,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9463039636611938,
+          "box": [
+            424,
+            190,
+            1019,
+            660
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9357812404632568,
+          "box": [
+            436,
+            674,
+            995,
+            848
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W040",
+      "ocr_partial": null
+    },
+    {
+      "index": 158,
+      "filename": "158.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\158.jpg",
+      "success": true,
+      "result_code": "W029",
+      "expected": "W029",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 447,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9367969036102295,
+          "box": [
+            480,
+            280,
+            717,
+            521
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.33219587802886963,
+          "box": [
+            484,
+            520,
+            716,
+            614
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.2492941915988922,
+          "box": [
+            429,
+            669,
+            987,
+            849
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.16675347089767456,
+          "box": [
+            484,
+            516,
+            717,
+            612
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W029",
+      "ocr_partial": null
+    },
+    {
+      "index": 159,
+      "filename": "159.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\159.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 468,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9579678177833557,
+          "box": [
+            413,
+            205,
+            1022,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9301736950874329,
+          "box": [
+            426,
+            663,
+            1007,
+            841
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 160,
+      "filename": "160.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\160.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 441,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9635047912597656,
+          "box": [
+            411,
+            204,
+            1021,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9290578365325928,
+          "box": [
+            427,
+            665,
+            1005,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 161,
+      "filename": "161.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\161.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 527,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9686080813407898,
+          "box": [
+            411,
+            201,
+            1023,
+            656
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.930554986000061,
+          "box": [
+            426,
+            666,
+            1002,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 162,
+      "filename": "162.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\162.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 355,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9688408970832825,
+          "box": [
+            412,
+            201,
+            1024,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9227445721626282,
+          "box": [
+            426,
+            665,
+            1006,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 163,
+      "filename": "163.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\163.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 302,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.97132807970047,
+          "box": [
+            411,
+            201,
+            1025,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9317672252655029,
+          "box": [
+            426,
+            666,
+            1004,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 164,
+      "filename": "164.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\164.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 329,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9740842580795288,
+          "box": [
+            413,
+            200,
+            1023,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9229419231414795,
+          "box": [
+            427,
+            665,
+            1006,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 165,
+      "filename": "165.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\165.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 487,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9727678298950195,
+          "box": [
+            412,
+            200,
+            1025,
+            656
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.934309184551239,
+          "box": [
+            429,
+            667,
+            1003,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 166,
+      "filename": "166.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\166.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 554,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9738911986351013,
+          "box": [
+            412,
+            199,
+            1024,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9329625964164734,
+          "box": [
+            427,
+            666,
+            1003,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 167,
+      "filename": "167.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\167.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 499,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9700330495834351,
+          "box": [
+            411,
+            200,
+            1024,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9302085638046265,
+          "box": [
+            426,
+            666,
+            1004,
+            843
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 168,
+      "filename": "168.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\168.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 549,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9660292863845825,
+          "box": [
+            410,
+            201,
+            1023,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9360765814781189,
+          "box": [
+            425,
+            666,
+            1003,
+            843
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 169,
+      "filename": "169.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\169.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 498,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.970625102519989,
+          "box": [
+            412,
+            204,
+            1023,
+            656
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9384544491767883,
+          "box": [
+            426,
+            665,
+            1004,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 170,
+      "filename": "170.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\170.jpg",
+      "success": true,
+      "result_code": "W052",
+      "expected": "W052",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 539,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 0,
+          "conf": 0.9533416032791138,
+          "box": [
+            411,
+            205,
+            1022,
+            655
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.9199650883674622,
+          "box": [
+            424,
+            663,
+            1007,
+            842
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W052",
+      "ocr_partial": null
+    },
+    {
+      "index": 171,
+      "filename": "171.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\171.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 549,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8355218768119812,
+          "box": [
+            528,
+            689,
+            753,
+            783
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8027684688568115,
+          "box": [
+            414,
+            204,
+            1028,
+            655
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7152324318885803,
+          "box": [
+            527,
+            457,
+            747,
+            691
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.6730425357818604,
+          "box": [
+            430,
+            668,
+            1007,
+            844
+          ]
+        },
+        {
+          "cls": 1,
+          "conf": 0.20563216507434845,
+          "box": [
+            432,
+            664,
+            1005,
+            845
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    },
+    {
+      "index": 172,
+      "filename": "172.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data\\172.jpg",
+      "success": true,
+      "result_code": "W046",
+      "expected": "W046",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
+      "confidence": 1.0,
+      "duration_ms": 504,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9414103031158447,
+          "box": [
+            529,
+            689,
+            756,
+            785
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8911372423171997,
+          "box": [
+            528,
+            457,
+            750,
+            692
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.28250905871391296,
+          "box": [
+            413,
+            198,
+            1035,
+            652
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W046",
+      "ocr_partial": null
+    }
+  ]
+}

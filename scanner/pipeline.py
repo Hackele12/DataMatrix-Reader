@@ -1,6 +1,9 @@
 """
 Scan-Pipelines: scan_2class() für YOLO-Detektionen (DataMatrix + Text) und scan() für ein Gesamtbild
 bzw. einen Etikett-Ausschnitt. Priorität: keine Fehllesungen – lieber "Fehler" als ein falscher Code.
+
+Ablauf: schnelle DataMatrix-Stufen (scan_fast: zxing, Modul-Decoder) laufen immer; langsame Rückfallebenen
+(OCR-Gegenprobe, Gesamtbild-Scan, Gamma-Fallback) nur im Zeitbudget config.SCAN_TIME_BUDGET_S.
 """
 
 import logging
@@ -13,19 +16,25 @@ import numpy as np
 
 from . import config
 from .code_format import dmx_text_to_code, is_valid_horden_code, normalize_ocr_confusions
-from .dmx_decoder import decode_dmx_dotpeen, scan_datamatrix_pipeline
+from .dmx_decoder import decode_zxing_stream, scan_datamatrix_pipeline, zxing_dmx_stream
+from .dmx_module_reader import read_dmx_modules, text_crop_from_quad
 from .fusion import merge_results, try_reconstruct
 from .horde_matching import correct_ocr_confusion, match_horde_image
 from .image_ops import deskew_crop, gamma_lut, to_gray
 from .ocr import read_ocr_with_status
 from .onnx_models import predict_pacc
 from .ref_images import scan_reference_image_pipeline
-from .results import aborted_result, dmx_blocked, dmx_final_result, error_result, ocr_failed, scan_result
+from .results import (aborted_result, dmx_blocked, dmx_final_result, dmx_soft_result, error_result, ocr_failed,
+                      scan_result)
 
 logger = logging.getLogger(__name__)
 
 MIN_DMX_YOLO_CONF = 0.30
 MIN_TXT_YOLO_CONF = 0.25
+
+# Erste zxing-Runde vor dem Modul-Decoder: Rohausschnitte + die günstigen Varianten der besten Region
+# (Benchmark: 146 von 157 Varianten-Treffern liegen in den ersten 24 Varianten, Median 14 ms).
+_ZXING_FIRST_PASS = 28
 
 # Gamma-Werte des Aufhell-Fallbacks für dunkle/unterbelichtete Bilder
 _GAMMA_FALLBACK_VALUES = (0.25, 0.3, 0.35, 0.4, 0.5)
@@ -40,6 +49,117 @@ _DIGIT_CONFUSION_PAIRS = {('0', '4'), ('4', '0'), ('0', '6'), ('6', '0'), ('0', 
 
 def _elapsed_ms(t0: float) -> int:
     return int((time.time() - t0) * 1000)
+
+
+def new_deadline(budget_s: float | None = None) -> float:
+    """Deadline (time.perf_counter()) für einen Scan; ohne Angabe gilt config.SCAN_TIME_BUDGET_S."""
+    return time.perf_counter() + (config.SCAN_TIME_BUDGET_S if budget_s is None else budget_s)
+
+
+def _time_left(deadline: float | None) -> float:
+    return float("inf") if deadline is None else deadline - time.perf_counter()
+
+
+# --------------------------------------------------------------------------- #
+#  Schnelle DataMatrix-Stufen                                                  #
+# --------------------------------------------------------------------------- #
+
+def _module_result(module: dict) -> dict:
+    """Modul-Decoder-Ergebnis → Scan-Ergebnis (Reed-Solomon-bestätigt = Verifiziert, sonst Modulabgleich)."""
+    if module["tier"] == "soft":
+        result = dmx_soft_result(module["code"], f"DataMatrix Modulabgleich (NCC {module['ncc']:.2f}, "
+                                                 f"Marge {module['margin']:.2f})", round(module["ncc"], 2))
+    else:
+        erasures = f" + {module['erasures']} Löschungen" if module["tier"] == "rs_erasure" else ""
+        result = dmx_final_result(module["code"], f"DataMatrix dekodiert (Modul-Decoder, Reed-Solomon{erasures})")
+    result["_module"] = {
+        "tier": module["tier"], "ncc": round(module["ncc"], 3), "margin": round(module["margin"], 3),
+        "frame_t": round(module["frame_t"], 2), "rs_errors": module["rs_errors"], "erasures": module["erasures"],
+        "quad": None if module["quad"] is None else [[round(float(v), 1) for v in p] for p in module["quad"]],
+    }
+    return result
+
+
+def _dmx_search_boxes(detections: list[dict]) -> list[tuple]:
+    """YOLO-DataMatrix-Boxen (beste zuerst); ohne DMX-Detektion die aus der Textbox abgeleitete Box."""
+    boxes = [det["box"] for det in sorted(detections, key=lambda d: d.get("conf", 0.0), reverse=True)
+             if det.get("cls") == 0]
+    if not boxes and detections:
+        dmx_det, _ = select_label_detections(detections)
+        if dmx_det is not None:
+            boxes = [dmx_det["box"]]
+    return boxes
+
+
+def scan_fast(frame: np.ndarray, detections=(), deadline: float | None = None, zxing_rest: bool = True,
+              hints: dict | None = None) -> dict | None:
+    """
+    Schnelle DataMatrix-Stufen, in dieser Reihenfolge: zxing auf Rohausschnitten und günstigen Varianten →
+    Modul-Decoder mit Reed-Solomon-Bestätigung → restliche zxing-Varianten → Modul-Decoder per
+    Codebuch-Abgleich (Soft).
+
+    Args:
+        frame: Kamerabild (BGR oder Graustufen).
+        detections: YOLO-Detektionen wie bei scan_2class(); leer = Suche im Gesamtbild.
+        deadline: time.perf_counter()-Zeitpunkt für den Modul-Decoder (weitere Kandidaten).
+        zxing_rest: restliche zxing-Varianten (bis ~0,7 s) prüfen; für Bestätigungsbilder abschaltbar.
+        hints: optionales dict; erhält unter "module" ein nicht angenommenes Modul-Decoder-Ergebnis
+               (Symbolviereck + bester Kandidat) für den OCR-Abgleich in scan_2class().
+
+    Returns:
+        Scan-Ergebnis ("Verifiziert" oder "Modulabgleich") oder None.
+    """
+    if frame is None or frame.size == 0:
+        return None
+    boxes = _dmx_search_boxes(list(detections))
+    stream = zxing_dmx_stream(frame, boxes)
+    code, detail = decode_zxing_stream(stream, _ZXING_FIRST_PASS)
+    if code:
+        return dmx_final_result(code, f"DataMatrix dekodiert (zxing-cpp, {detail})")
+
+    module = None
+    if config.USE_MODULE_READER:
+        try:
+            module = read_dmx_modules(frame, boxes, deadline)
+        except Exception as e:
+            logger.warning(f"[MODUL] Modul-Decoder Fehler: {e}")
+        if module is not None and module["tier"] in ("rs", "rs_erasure"):
+            return _module_result(module)
+
+    code, detail = decode_zxing_stream(stream) if zxing_rest else (None, None)
+    if code:
+        return dmx_final_result(code, f"DataMatrix dekodiert (zxing-cpp, {detail})")
+    if module is not None and module["tier"] == "soft":
+        return _module_result(module)
+    if hints is not None and module is not None and module["quad"] is not None:
+        hints["module"] = module
+    return None
+
+
+# Modul-Decoder-Kandidat, der nur zusammen mit einer übereinstimmenden OCR-Lesung angenommen wird
+_OCR_CONFIRM_MIN_NCC = 0.50
+_OCR_CONFIRM_MIN_MARGIN = 0.10
+
+
+def _usable_module_hint(hint: dict | None) -> dict | None:
+    """Hinweis nur mit echtem Symbolrahmen (Rahmen-t wie bei Soft-Ergebnissen) und Viereck."""
+    if hint and hint.get("quad") is not None and hint.get("frame_t", 0.0) >= config.SOFT_MIN_FRAME_T:
+        return hint
+    return None
+
+
+def _ocr_confirmed_module_result(hint: dict, ocr_result: dict) -> dict | None:
+    """Zwei unabhängige Quellen: Codebuch-Abgleich der DataMatrix und OCR der Klarschrift nennen denselben Code."""
+    ocr_text = ocr_result.get("text") if ocr_result.get("status") == "ok" else None
+    if not ocr_text or ocr_text != hint.get("best"):
+        return None
+    if hint["ncc"] < _OCR_CONFIRM_MIN_NCC or hint["margin"] < _OCR_CONFIRM_MIN_MARGIN:
+        return None
+    result = scan_result(True, ocr_text, "Verifiziert", round(max(hint["ncc"], ocr_result.get("confidence", 0.0)), 2),
+                         dmtx=hint["best"], ocr=ocr_text, verified=True, partial=ocr_text)
+    result["method_detail"] = (f"DataMatrix-Modulabgleich + OCR übereinstimmend (NCC {hint['ncc']:.2f}, "
+                               f"Marge {hint['margin']:.2f})")
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -91,9 +211,10 @@ def scan_datamatrix(frame: np.ndarray) -> dict:
     return dmx_result
 
 
-def scan_ocr(frame: np.ndarray) -> dict:
+def scan_ocr(frame: np.ndarray, text_crop: bool = False) -> dict:
     """
     Reine OCR-Auswertung eines zugeschnittenen Text-Crops (EasyOCR, optional PACC).
+    text_crop: entzerrter Klarschrift-Ausschnitt aus der Symbolgeometrie (ganzes Bild auswerten).
 
     Returns:
         dict mit status, text, confidence, partial_display, readable_chars, missing_positions, raw_candidate.
@@ -102,7 +223,7 @@ def scan_ocr(frame: np.ndarray) -> dict:
         return ocr_failed()
 
     t0 = time.time()
-    ocr_result = read_ocr_with_status(frame)
+    ocr_result = read_ocr_with_status(frame, text_crop)
     ocr_text = ocr_result.get("text")
 
     pacc_text, pacc_conf = predict_pacc(frame)
@@ -158,13 +279,13 @@ def select_label_detections(detections: list[dict]) -> tuple[dict | None, dict |
     return dmx_det, txt_det
 
 
-def _scan_crops_parallel(dmx_crop: np.ndarray, txt_crop: np.ndarray) -> tuple[dict, dict]:
-    """DataMatrix- und OCR-Auswertung der Crops parallel; Ausnahmen liefern Leer-Ergebnisse."""
+def _scan_crops_parallel(dmx_crop: np.ndarray, txt_crop: np.ndarray, text_crop: bool = False) -> tuple[dict, dict]:
+    """DataMatrix- (nur mit Legacy-Kaskade) und OCR-Auswertung der Crops parallel; Ausnahmen liefern Leer-Ergebnisse."""
     with ThreadPoolExecutor(max_workers=2) as executor:
-        dmx_future = executor.submit(scan_datamatrix, dmx_crop)
-        ocr_future = executor.submit(scan_ocr, txt_crop)
+        dmx_future = executor.submit(scan_datamatrix, dmx_crop) if config.USE_LEGACY_DMX_CASCADE else None
+        ocr_future = executor.submit(scan_ocr, txt_crop, text_crop)
         try:
-            dmx_result = dmx_future.result()
+            dmx_result = dmx_future.result() if dmx_future else dmx_blocked("Legacy-DMX-Kaskade deaktiviert")
         except Exception as e:
             logger.warning(f"[2CLASS] DataMatrix-Scan Fehler: {e}")
             dmx_result = dmx_blocked("DMX Fehler")
@@ -176,10 +297,13 @@ def _scan_crops_parallel(dmx_crop: np.ndarray, txt_crop: np.ndarray) -> tuple[di
     return dmx_result, ocr_result
 
 
-def _fullframe_fallback(result: dict, frame: np.ndarray) -> dict:
+def _fullframe_fallback(result: dict, frame: np.ndarray, deadline: float | None = None) -> dict:
     """Crop-Auswertung ohne Erfolg → scan() auf dem Gesamtbild; nur verifizierte oder sichere Ergebnisse zählen."""
+    if _time_left(deadline) <= 0:
+        logger.info("[2CLASS] Zeitbudget erschöpft – kein Gesamtbild-Fallback.")
+        return result
     logger.info("[2CLASS] 2-Klassen-Crop ohne Erfolg. Starte Fallback auf scan().")
-    fallback_res = scan(frame, try_dotpeen=False)
+    fallback_res = scan(frame, try_dotpeen=False, deadline=deadline)
     if fallback_res.get("success"):
         fb_conf = fallback_res.get("confidence", 0)
         fb_method = fallback_res.get("method", "")
@@ -196,14 +320,17 @@ def _is_digit_confusion(code_a: str, code_b: str) -> bool:
     return len(diff_positions) == 1 and (code_a[diff_positions[0]], code_b[diff_positions[0]]) in _DIGIT_CONFUSION_PAIRS
 
 
-def _cross_validate_with_fullframe(result: dict, frame: np.ndarray) -> dict:
-    """Gegenprobe eines unverifizierten 2-Klassen-Ergebnisses mit scan() auf dem Gesamtbild."""
+def _cross_validate_with_fullframe(result: dict, frame: np.ndarray, deadline: float | None = None) -> dict:
+    """
+    Gegenprobe eines unverifizierten 2-Klassen-Ergebnisses mit scan() auf dem Gesamtbild. Läuft aus
+    Sicherheitsgründen auch nach Ablauf des Zeitbudgets; scan() lässt dann nur die optionalen Stufen weg.
+    """
     logger.info(
         f"[2CLASS-CROSSVAL] Ergebnis '{result['result']}' nicht verifiziert "
         f"(method={result['method']}, conf={result.get('confidence', 0):.2f}). "
         f"Starte Gegenprobe mit scan() auf Gesamtbild..."
     )
-    crossval_res = scan(frame, try_dotpeen=False)
+    crossval_res = scan(frame, try_dotpeen=False, deadline=deadline, mandatory_ocr=True)
 
     if not crossval_res.get("success"):
         # Nur ein sicheres Ergebnis, das keine blinde Rekonstruktion ist, wird ohne Bestätigung akzeptiert
@@ -250,24 +377,33 @@ def _cross_validate_with_fullframe(result: dict, frame: np.ndarray) -> dict:
                        partial=crossval_res.get("ocr_partial_display"))
 
 
-def scan_2class(frame: np.ndarray, detections: list[dict], cancellation_check=None) -> dict:
+def scan_2class(frame: np.ndarray, detections: list[dict], cancellation_check=None, deadline: float | None = None,
+                run_fast: bool = True, module_hint: dict | None = None) -> dict:
     """
     2-Klassen-Pipeline für YOLO-Detektionen (Klasse 0 = DataMatrix, Klasse 1 = Text).
 
-    1. zxing-Dekodierung der DataMatrix (YOLO-Boxen, DMX-Suche, Gesamtbild) – ein Decode ist endgültig.
-    2. DataMatrix- und Text-Crop parallel auswerten und fusionieren.
+    1. Schnelle DataMatrix-Stufen (scan_fast: zxing, Modul-Decoder) – ein Decode ist endgültig.
+    2. Text-Crop per OCR auswerten (optional Legacy-DMX-Kaskade) und fusionieren. Hat der Modul-Decoder den
+       Symbolrahmen gefunden, kommt der Text-Crop entzerrt aus dessen Geometrie; nennen OCR und Codebuch-Abgleich
+       denselben Code, gilt er als verifiziert.
     3. Unverifizierte Ergebnisse per Gegenprobe mit scan() auf dem Gesamtbild absichern.
 
     Args:
         frame: Kamerabild (BGR).
         detections: [{"cls": int, "conf": float, "box": (x1, y1, x2, y2)}, ...]
         cancellation_check: Optionaler Callback; True bricht den Scan ab (neuer Trigger).
+        deadline: time.perf_counter()-Zeitpunkt, ab dem keine optionalen Stufen mehr starten
+                  (Standard: jetzt + config.SCAN_TIME_BUDGET_S).
+        run_fast: False, wenn der Aufrufer scan_fast() bereits ausgeführt hat (Mehrbild-Auswertung).
+        module_hint: hints["module"] aus dem scan_fast()-Aufruf des Aufrufers (bei run_fast=False).
     """
     if cancellation_check and cancellation_check():
         logger.info("[2CLASS] Scan wurde vor Start abgebrochen/verworfen (neuer Trigger).")
         return aborted_result()
     if frame is None:
         return error_result("Kein Bild vorhanden.")
+    if deadline is None:
+        deadline = new_deadline()
 
     dmx_det, txt_det = select_label_detections(detections)
     dmx_info = f"DMX=Ja(conf={dmx_det['conf']:.2f})" if dmx_det else "DMX=Nein"
@@ -287,33 +423,50 @@ def scan_2class(frame: np.ndarray, detections: list[dict], cancellation_check=No
         return result
 
     # DataMatrix zuerst: ein echter Decode ist endgültig, OCR und Gegenprobe entfallen dann.
-    t_dmx_start = time.time()
-    yolo_dmx_boxes = [det["box"] for det in sorted(detections, key=lambda d: d.get("conf", 0.0), reverse=True)
-                      if det.get("cls") == 0]
-    dot_code, dot_detail = decode_dmx_dotpeen(frame, yolo_dmx_boxes)
-    if dot_code:
-        dmx_ms = _elapsed_ms(t_dmx_start)
-        logger.info(f"[2CLASS] DataMatrix dekodiert ({dot_detail}): '{dot_code}' ({dmx_ms}ms). OCR übersprungen.")
-        return finish(dmx_final_result(dot_code, f"DataMatrix dekodiert (zxing-cpp, {dot_detail})"),
-                      {"total_2class_ms": dmx_ms, "dmtx_ms": dmx_ms, "ocr_ms": 0})
+    if run_fast:
+        t_dmx_start = time.time()
+        hints = {}
+        fast = scan_fast(frame, detections, deadline, hints=hints)
+        if fast is not None:
+            dmx_ms = _elapsed_ms(t_dmx_start)
+            logger.info(f"[2CLASS] {fast['method_detail']}: '{fast['result']}' ({dmx_ms}ms). OCR übersprungen.")
+            return finish(fast, {"total_2class_ms": dmx_ms, "dmtx_ms": dmx_ms, "ocr_ms": 0})
+        module_hint = hints.get("module")
+    hint = _usable_module_hint(module_hint)
 
-    if dmx_det is None and txt_det is None:
+    if cancellation_check and cancellation_check():
+        return aborted_result()
+    if dmx_det is None and txt_det is None and hint is None:
         logger.info("[2CLASS] Keine YOLO-Detections. Starte Fallback auf scan().")
-        return scan(frame, try_dotpeen=False)
+        return scan(frame, cancellation_check, try_dotpeen=False, deadline=deadline)
+    if _time_left(deadline) <= 0:
+        logger.info("[2CLASS] Zeitbudget nach den DataMatrix-Stufen erschöpft – keine OCR-Auswertung.")
+        return finish(scan_result(False, "Kein Code erkannt.", "Fehler", 0.0), {"total_2class_ms": 0})
 
-    dmx_crop = deskew_crop(frame, dmx_det["box"], padding=40)
+    dmx_crop = deskew_crop(frame, dmx_det["box"], padding=40) if dmx_det is not None else frame
     logger.info(f"[2CLASS] DataMatrix-Crop: {dmx_crop.shape[1]}x{dmx_crop.shape[0]}")
-    txt_crop = deskew_crop(frame, txt_det["box"], padding=30)
+    if hint is not None:
+        txt_crop = text_crop_from_quad(frame, hint["quad"])
+        logger.info(f"[2CLASS] Text-Crop entzerrt aus der Symbolgeometrie (Kandidat '{hint['best']}', "
+                    f"NCC {hint['ncc']:.2f}, Marge {hint['margin']:.2f}).")
+    else:
+        txt_crop = deskew_crop(frame, txt_det["box"], padding=30)
     logger.info(f"[2CLASS] Text-Crop: {txt_crop.shape[1]}x{txt_crop.shape[0]}")
 
     t_start = time.time()
-    dmx_result, ocr_result = _scan_crops_parallel(dmx_crop, txt_crop)
+    dmx_result, ocr_result = _scan_crops_parallel(dmx_crop, txt_crop, text_crop=hint is not None)
 
     if cancellation_check and cancellation_check():
         logger.info("[2CLASS] Scan während der Auswertung durch neuen Trigger storniert!")
         return aborted_result()
 
     timing = {"total_2class_ms": _elapsed_ms(t_start)}
+
+    if hint is not None:
+        confirmed = _ocr_confirmed_module_result(hint, ocr_result)
+        if confirmed is not None:
+            logger.info(f"[2CLASS] {confirmed['method_detail']}: '{confirmed['result']}'.")
+            return finish(confirmed, timing)
 
     # Ein echter DMX-Decode im Crop (Reed-Solomon-geprüft) ist endgültig; OCR nur noch als Info.
     crop_code = dmx_text_to_code(dmx_result.get("text")) if dmx_result.get("status") == "decoded" else None
@@ -327,20 +480,20 @@ def scan_2class(frame: np.ndarray, detections: list[dict], cancellation_check=No
                 f"result='{result['result']}' ({timing['total_2class_ms']}ms)")
 
     if not result.get("success"):
-        return _fullframe_fallback(result, frame)
+        return _fullframe_fallback(result, frame, deadline)
 
     if result.get("verified", False) and result.get("confidence", 0) >= 1.0:
         logger.info(f"[2CLASS] Ergebnis doppelt verifiziert. Akzeptiere '{result['result']}'.")
         return result
 
-    return _cross_validate_with_fullframe(result, frame)
+    return _cross_validate_with_fullframe(result, frame, deadline)
 
 
 # --------------------------------------------------------------------------- #
 #  Gesamtbild-Pipeline                                                         #
 # --------------------------------------------------------------------------- #
 
-def _gamma_fallback(frame: np.ndarray) -> dict | None:
+def _gamma_fallback(frame: np.ndarray, deadline: float | None = None) -> dict | None:
     """
     OCR auf mehrfach aufgehellten Bildern mit Mehrheitsentscheid. Bei dunklen Bildern liest OCR
     systematisch 6 statt 0 (W031 → W631), daher verliert eine 6-Variante gegen ihre gefundene 0-Variante.
@@ -349,6 +502,9 @@ def _gamma_fallback(frame: np.ndarray) -> dict | None:
     gray = to_gray(frame)
     readings = []
     for gamma in _GAMMA_FALLBACK_VALUES:
+        if _time_left(deadline) <= 0:
+            logger.info(f"[GAMMA-FALLBACK] Zeitbudget erschöpft vor gamma_{gamma}.")
+            break
         ocr_gamma = read_ocr_with_status(cv2.LUT(gray, gamma_lut(gamma)))
         if ocr_gamma.get("status") == "ok" and ocr_gamma.get("text"):
             code = normalize_ocr_confusions(ocr_gamma["text"])
@@ -385,18 +541,24 @@ def _gamma_fallback(frame: np.ndarray) -> dict | None:
     return scan_result(True, best_code, "OCR", max_conf[best_code], ocr=best_code, partial=best_code)
 
 
-def scan(frame: np.ndarray, cancellation_check=None, try_dotpeen: bool = True) -> dict:
+def scan(frame: np.ndarray, cancellation_check=None, try_dotpeen: bool = True, deadline: float | None = None,
+         mandatory_ocr: bool = False) -> dict:
     """
-    Gesamtbild-Scan: DataMatrix-Pipeline (Fast-Path), danach OCR und Referenzbild-Abgleich
-    mit Fusion sowie Gamma-Fallback für dunkle Bilder.
+    Gesamtbild-Scan: schnelle DataMatrix-Stufen (scan_fast), danach OCR (optional Legacy-DMX-Kaskade und
+    Referenzbild-Abgleich) mit Fusion sowie Gamma-Fallback für dunkle Bilder im Zeitbudget.
 
     Args:
         frame: Kamerabild oder Etikett-Ausschnitt (BGR oder Graustufen).
         cancellation_check: Optionaler Callback; True bricht den Scan ab (neuer Trigger).
-        try_dotpeen: zxing-Dot-Peen-Dekodierung vorschalten (scan_2class hat sie bereits ausgeführt).
+        try_dotpeen: schnelle DataMatrix-Stufen vorschalten (scan_2class hat sie bereits ausgeführt).
+        deadline: time.perf_counter()-Zeitpunkt, ab dem keine optionalen Stufen mehr starten
+                  (Standard: jetzt + config.SCAN_TIME_BUDGET_S).
+        mandatory_ocr: OCR auch nach Ablauf des Budgets (Gegenprobe eines unverifizierten Ergebnisses).
     """
     if frame is None:
         return error_result("Kein Bild vorhanden.")
+    if deadline is None:
+        deadline = new_deadline()
 
     h, w = frame.shape[:2]
     logger.info(f"Triple-Validation Scan v5.0 gestartet auf Bild mit {w}x{h} Pixeln.")
@@ -406,20 +568,21 @@ def scan(frame: np.ndarray, cancellation_check=None, try_dotpeen: bool = True) -
 
     if try_dotpeen:
         t_dot = time.time()
-        dot_code, dot_detail = decode_dmx_dotpeen(frame)
-        if dot_code:
+        fast = scan_fast(frame, (), deadline)
+        if fast is not None:
             dot_ms = _elapsed_ms(t_dot)
-            logger.info(f"[FAST-PATH] DataMatrix dekodiert ({dot_detail}): '{dot_code}' ({dot_ms}ms). Skippe OCR.")
-            result = dmx_final_result(dot_code, f"DataMatrix dekodiert (zxing-cpp, {dot_detail})")
-            result["_internal_timing"] = {"ocr_ms": 0, "dmtx_ms": dot_ms, "refimg_ms": 0}
-            return result
+            logger.info(f"[FAST-PATH] {fast['method_detail']}: '{fast['result']}' ({dot_ms}ms). Skippe OCR.")
+            fast["_internal_timing"] = {"ocr_ms": 0, "dmtx_ms": dot_ms, "refimg_ms": 0}
+            return fast
 
     t_dmx = time.time()
-    try:
-        dmx_result = scan_datamatrix_pipeline(frame)
-    except Exception as e:
-        logger.warning(f"DataMatrix Pipeline Exception: {e}")
-        dmx_result = dmx_blocked("DMX Pipeline Fehler")
+    dmx_result = dmx_blocked("Legacy-DMX-Kaskade deaktiviert")
+    if config.USE_LEGACY_DMX_CASCADE and _time_left(deadline) > 0:
+        try:
+            dmx_result = scan_datamatrix_pipeline(frame)
+        except Exception as e:
+            logger.warning(f"DataMatrix Pipeline Exception: {e}")
+            dmx_result = dmx_blocked("DMX Pipeline Fehler")
     dmx_ms = _elapsed_ms(t_dmx)
 
     if dmx_result.get("status") == "decoded" and dmx_result.get("text") and is_valid_horden_code(dmx_result["text"]):
@@ -440,27 +603,32 @@ def scan(frame: np.ndarray, cancellation_check=None, try_dotpeen: bool = True) -
 
     # OCR und RefImg sequentiell (verhindert PyTorch/OpenCV-Multithreading-Crashes)
     t_ocr = time.time()
-    try:
-        ocr_result = read_ocr_with_status(frame)
-    except Exception as e:
-        logger.warning(f"OCR Fehler: {e}")
-        ocr_result = ocr_failed()
+    ocr_result = ocr_failed()
+    if mandatory_ocr or _time_left(deadline) > 0:
+        try:
+            ocr_result = read_ocr_with_status(frame)
+        except Exception as e:
+            logger.warning(f"OCR Fehler: {e}")
+    else:
+        logger.info("Zeitbudget erschöpft – Gesamtbild-OCR übersprungen.")
     ocr_ms = _elapsed_ms(t_ocr)
 
     t_refimg = time.time()
-    try:
-        ref_img_result = scan_reference_image_pipeline(frame)
-    except Exception as e:
-        logger.warning(f"RefImg Pipeline Fehler: {e}")
-        ref_img_result = {"status": "blocked", "text": None, "confidence": 0.0, "method_detail": "RefImg Fehler"}
+    ref_img_result = {"status": "blocked", "text": None, "confidence": 0.0, "method_detail": "RefImg deaktiviert"}
+    if config.USE_LEGACY_DMX_CASCADE and _time_left(deadline) > 0:
+        try:
+            ref_img_result = scan_reference_image_pipeline(frame)
+        except Exception as e:
+            logger.warning(f"RefImg Pipeline Fehler: {e}")
+            ref_img_result = {"status": "blocked", "text": None, "confidence": 0.0, "method_detail": "RefImg Fehler"}
     refimg_ms = _elapsed_ms(t_refimg)
 
     timing = {"ocr_ms": ocr_ms, "dmtx_ms": dmx_ms, "refimg_ms": refimg_ms}
     result = merge_results(ocr_result, dmx_result, frame, ref_img_result)
     result["_internal_timing"] = timing
 
-    if not result.get("success"):
-        gamma_result = _gamma_fallback(frame)
+    if not result.get("success") and _time_left(deadline) > 0:
+        gamma_result = _gamma_fallback(frame, deadline)
         if gamma_result is not None:
             result = gamma_result
             result["_internal_timing"] = timing

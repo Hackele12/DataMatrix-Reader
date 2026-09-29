@@ -128,6 +128,10 @@ def main():
     parser.add_argument("--imgsz", type=int, default=640, help="Bildgröße für Training (Standard: 640)")
     parser.add_argument("--batch", type=int, default=8, help="Batch-Größe (Standard: 8)")
     parser.add_argument("--dataset", default="dataset_v2", help="Dataset-Ordner (Standard: dataset_v2)")
+    parser.add_argument("--name", default="training_runs_v2/horde_2class",
+                        help="Zielordner unter runs/detect (Standard: Produktionsmodell training_runs_v2/horde_2class)")
+    parser.add_argument("--weights", default=None,
+                        help="Startgewichte (Standard: vorhandenes 2-Klassen-Modell, sonst yolov10n.pt)")
     args = parser.parse_args()
     
     project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -169,7 +173,10 @@ def main():
     )
     base_model_path = os.path.join(project_dir, "yolov10n.pt")
     
-    if os.path.exists(v2_model_path):
+    if args.weights:
+        model_path = os.path.abspath(args.weights)
+        logger.info(f"Training mit Startgewichten: {model_path}")
+    elif os.path.exists(v2_model_path):
         model_path = v2_model_path
         logger.info(f"Feintuning von bestehendem 2-Klassen-Modell: {model_path}")
     elif os.path.exists(base_model_path):
@@ -202,7 +209,7 @@ def main():
             imgsz=args.imgsz,
             batch=args.batch,
             project=os.path.join(project_dir, "runs", "detect"),
-            name="training_runs_v2/horde_2class",
+            name=args.name,
             exist_ok=True,
             device=device,
             # Augmentierung-Parameter für kleine Datasets
@@ -221,10 +228,7 @@ def main():
         logger.info("\n" + "=" * 60)
         logger.info("TRAINING ERFOLGREICH ABGESCHLOSSEN!")
         
-        best_weights = os.path.join(
-            project_dir, "runs", "detect", "training_runs_v2",
-            "horde_2class", "weights", "best.pt"
-        )
+        best_weights = os.path.join(project_dir, "runs", "detect", *args.name.split("/"), "weights", "best.pt")
         if os.path.exists(best_weights):
             logger.info(f"[OK] Bestes Modell: {best_weights}")
             logger.info("\nNächster Schritt: Benchmark ausführen mit")

@@ -121,6 +121,8 @@ TRAINING_DIR = "training_data"
 AUTO_TRAIN_DIR = "auto_training_data"
 AUTO_TRAIN_MAX = 1000            # Maximale Anzahl Auto-Training-Bilder (Festplattenschutz)
 SINGLE_INSTANCE_MUTEX = "Local\\DataDetector_DataMatrixReader"
+EXTRA_SCAN_FRAMES = 2            # weitere Kamerabilder, wenn das erste keinen Reed-Solomon-bestätigten Code liefert
+NEXT_FRAME_TIMEOUT_S = 0.4       # Wartezeit auf ein neues Kamerabild
 
 # --- UI Styling (Light Theme) ---
 ctk.set_appearance_mode("Light")
@@ -1098,6 +1100,76 @@ class CameraPanel(ctk.CTkFrame):
         finally:
             conn.close()
 
+    @staticmethod
+    def _wait_next_frame(grabber: IDSFrameGrabber, after_time: float) -> tuple[np.ndarray | None, float]:
+        """Nächstes Kamerabild nach after_time → (Bild, Zeitstempel); (None, after_time) nach Timeout."""
+        end = time.time() + NEXT_FRAME_TIMEOUT_S
+        while time.time() < end:
+            frame_time = grabber.last_frame_time
+            if frame_time > after_time:
+                frame = grabber.get_frame()
+                if frame is not None:
+                    return frame, frame_time
+            time.sleep(0.005)
+        return None, after_time
+
+    def _scan_frames(self, first_frame: np.ndarray, detections: list[dict], grabber: IDSFrameGrabber | None,
+                     cancellation_check=None) -> dict:
+        """
+        Schnelle DataMatrix-Stufen auf bis zu 1 + EXTRA_SCAN_FRAMES Kamerabildern (gleiche YOLO-Boxen, das Teil
+        steht beim Trigger). Ein Modulabgleich-Ergebnis wird durch ein weiteres Bild bestätigt; widersprechen
+        sich zwei Bilder, wird kein Code gemeldet. Ohne Treffer folgt die langsame Pipeline auf dem ersten Bild.
+        """
+        cfg = self.app.config_data
+        extra_frames = int(cfg.get("scan_extra_frames", EXTRA_SCAN_FRAMES))
+        require_confirmation = bool(cfg.get("soft_require_confirmation", False))
+        deadline = scanner.new_deadline()
+        frame, frame_time = first_frame, (grabber.last_frame_time if grabber is not None else 0.0)
+        soft = None
+        first_hints = {}
+        for index in range(1 + extra_frames):
+            # Bestätigungsbilder ohne die langsamen zxing-Varianten: die haben schon im ersten Bild nichts gefunden
+            result = scanner.scan_fast(frame, detections, deadline, zxing_rest=soft is None,
+                                       hints=first_hints if index == 0 else None)
+            if result is not None:
+                result["frames_used"] = index + 1
+                if result.get("verified"):
+                    if soft is not None and soft["result"] != result["result"]:
+                        logger.warning(f"[{self.cam_name}] Modulabgleich '{soft['result']}' im 1. Bild, "
+                                       f"Reed-Solomon '{result['result']}' im {index + 1}. Bild → verifizierter Code gilt.")
+                    return result
+                if soft is None:
+                    soft = result
+                elif soft["result"] == result["result"]:
+                    soft["method_detail"] += f", bestätigt im {index + 1}. Bild"
+                    soft["frames_used"] = index + 1
+                    return soft
+                else:
+                    logger.warning(f"[{self.cam_name}] Widerspruch zwischen Kamerabildern: "
+                                   f"'{soft['result']}' vs. '{result['result']}' → kein Code.")
+                    return {"success": False, "result": f"Widerspruch: {soft['result']} vs {result['result']}",
+                            "method": "Fehler", "confidence": 0.0, "dmtx_result": None, "ocr_result": None,
+                            "verified": False, "frames_used": index + 1}
+            if index == extra_frames or grabber is None or time.perf_counter() > deadline \
+                    or (cancellation_check and cancellation_check()):
+                break
+            frame, frame_time = self._wait_next_frame(grabber, frame_time)
+            if frame is None:
+                break
+
+        if soft is not None:
+            if not require_confirmation:
+                soft["method_detail"] += ", unbestätigt"
+                return soft
+            logger.warning(f"[{self.cam_name}] Modulabgleich '{soft['result']}' ohne Bestätigung → OCR-Gegenprobe.")
+            module = soft.get("_module") or {}
+            if soft.get("frames_used") == 1 and module.get("quad"):
+                # Die OCR der Klarschrift darf den Modulabgleich bestätigen (zwei unabhängige Quellen)
+                first_hints["module"] = {"best": soft["result"], "ncc": module["ncc"], "margin": module["margin"],
+                                         "frame_t": module["frame_t"], "quad": np.float32(module["quad"])}
+        return scanner.scan_2class(first_frame, detections, cancellation_check=cancellation_check,
+                                   deadline=deadline, run_fast=False, module_hint=first_hints.get("module"))
+
     def _process_tcp_trigger_scan(self, token_id: int = 0) -> str | None:
         """Wird aufgerufen wenn per TCP ein Trigger '+' empfangen wird."""
         cancellation_check = lambda: (token_id > 0 and self._tcp_scan_token != token_id)
@@ -1119,7 +1191,7 @@ class CameraPanel(ctk.CTkFrame):
             return None
 
         if use_2class:
-            result = scanner.scan_2class(scan_snapshot, yolo_detections, cancellation_check=cancellation_check)
+            result = self._scan_frames(scan_snapshot, yolo_detections, grabber, cancellation_check)
         else:
             result = scanner.scan(scan_frame, cancellation_check=cancellation_check)
 
@@ -1420,7 +1492,7 @@ class CameraPanel(ctk.CTkFrame):
             self.app.detect_labels(scan_snapshot, self.cam_name)
 
         if use_2class:
-            result = scanner.scan_2class(scan_snapshot, yolo_detections)
+            result = self._scan_frames(scan_snapshot, yolo_detections, grabber)
         else:
             result = scanner.scan(scan_frame)
         duration_ms = int((time.time() - start_time) * 1000)
@@ -1539,6 +1611,8 @@ class DataMatrixReaderApp(ctk.CTk):
         self.config_data = _load_config()
         self.camera_ips = _configured_camera_ips(self.config_data)
         self.log_base_dir = resolve_log_directory(self.config_data.get("log_dir", DEFAULT_LOG_DIR))
+        if "scan_time_budget_s" in self.config_data:
+            scanner.config.SCAN_TIME_BUDGET_S = float(self.config_data["scan_time_budget_s"])
 
         # --- YOLO-Modell (Thread-Sperre gegen gleichzeitige Nutzung durch Anzeige und Scans) ---
         self.model = None

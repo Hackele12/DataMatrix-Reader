@@ -21,6 +21,7 @@ config*.json
 dataset/
 training_data/
 auto_training_data/
+field_data/
 
 # Ignore ALL ML training runs and model weights (keep proprietary weights private)
 runs/

@@ -54,7 +54,8 @@ SELECT_ROW= "#DBEAFE"  # Selected row highlight
 HOVER_CARD= "#F8FAFC"  # KPI card hover
 
 GRADE_COLORS = {"A": SUCCESS, "B": ACCENT, "C": WARN, "D": DANGER}
-METHOD_COLORS = {"Verifiziert": SUCCESS, "OCR": ACCENT, "Rekonstruiert": WARN, "Fehler": DANGER}
+METHOD_COLORS = {"Verifiziert": SUCCESS, "Modulabgleich": "#0891B2", "OCR": ACCENT, "Rekonstruiert": WARN,
+                 "Fehler": DANGER}
 
 APP_VERSION = "5.0"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -63,7 +64,8 @@ DEFAULT_LOG_DIR = r"U:\Temp\DataMatrixReader.logFiles"
 ALL_SOURCES = "__ALL__"
 TIME_RANGES = ("Heute", "7 Tage", "30 Tage", "Alle")
 GRADE_FILTERS = ("Alle Grades", "Grade A", "Grade B", "Grade C", "Grade D")
-STATUS_FILTERS = ("Alle Status", "Erfolg", "Fehlgeschlagen", "Verifiziert", "OCR", "Rekonstruiert", "Fehler")
+STATUS_FILTERS = ("Alle Status", "Erfolg", "Fehlgeschlagen", "Verifiziert", "Modulabgleich", "OCR", "Rekonstruiert",
+                  "Fehler")
 POLL_MS = 2000
 PAGE_SIZE = 500
 SLOW_SCAN_MS = 12000        # wie das Flag SLOW_SCAN des ScanLoggers

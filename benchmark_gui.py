@@ -94,7 +94,8 @@ ROW_IMPROVED   = "#DCFCE7"
 OUTCOME_COLORS = {"ok": SUCCESS, "wrong": WARN, "fail": DANGER}
 LEVEL_COLORS = {"ok": SUCCESS, "warn": WARN, "fail": DANGER, "muted": TXT_LIGHT}
 LEVEL_ICONS = {"ok": "✓", "warn": "!", "fail": "✗", "muted": "–"}
-METHOD_COLORS = {"Verifiziert": SUCCESS, "OCR": ACCENT, "Rekonstruiert": WARN, "Fehler": DANGER}
+METHOD_COLORS = {"Verifiziert": SUCCESS, "Modulabgleich": "#0891B2", "OCR": ACCENT, "Rekonstruiert": WARN,
+                 "Fehler": DANGER}
 MENU_STYLE = {"fg_color": BG_SIDE, "text_color": TXT_DARK, "button_color": BORDER, "button_hover_color": TXT_LIGHT}
 RESULT_FILTERS = ("Alle", "Nicht gelesen", "Falsch gelesen", "Korrekt / gelesen", "Ohne Ground Truth",
                   "Änderungen zum Vergleich")
@@ -270,6 +271,7 @@ def benchmark_image(model, path: str, gt_map: dict, index: int) -> dict:
         "expected": expected,
         "is_match": bool(expected) and is_success and result_code == expected,
         "method": scan_res.get("method", "Unbekannt"),
+        "method_detail": scan_res.get("method_detail"),
         "confidence": scan_res.get("confidence", 0.0),
         "duration_ms": duration_ms,
         "fail_reason": None if is_success else _failure_reason(detections, scan_res),
@@ -287,10 +289,13 @@ def summarize(results: list[dict], total_images: int, total_time_s: float) -> di
     with_gt = [r for r in results if r["expected"]]
     accuracy_count = sum(1 for r in with_gt if r["is_match"])
     method_dist = {}
+    stage_dist = {}
     failure_cats = {}
     for r in results:
         if r["success"]:
             method_dist[r["method"]] = method_dist.get(r["method"], 0) + 1
+            stage = r.get("method_detail") or r["method"]
+            stage_dist[stage] = stage_dist.get(stage, 0) + 1
         else:
             reason = r["fail_reason"] or "UNKNOWN"
             failure_cats[reason] = failure_cats.get(reason, 0) + 1
@@ -308,6 +313,7 @@ def summarize(results: list[dict], total_images: int, total_time_s: float) -> di
         "avg_duration_ms": round(total_ms / total_images, 1) if total_images > 0 else 0,
         "total_time_s": round(total_time_s, 1),
         "method_distribution": method_dist,
+        "stage_distribution": dict(sorted(stage_dist.items(), key=lambda item: -item[1])),
         "failure_categories": failure_cats,
     }
 
@@ -343,6 +349,7 @@ def format_summary_lines(summary: dict) -> list[str]:
         f"  Nicht gelesen:  {s['no_read_count']}",
         f"  Ø Dauer/Bild:   {s['avg_duration_ms']:.0f} ms",
         f"  Gesamtzeit:     {s['total_time_s']:.1f}s",
+        *[f"  Stufe {count:>4}×  {stage}" for stage, count in s.get("stage_distribution", {}).items()],
         f"{'═' * 60}",
     ]
 
@@ -394,7 +401,10 @@ def save_report(results: list[dict], summary: dict, image_dir: str, gt_path: str
     }
     os.makedirs(REPORTS_DIR, exist_ok=True)
     report_path = os.path.join(REPORTS_DIR, f"benchmark_{now_dt.strftime('%Y-%m-%d_%H-%M-%S')}_v{BENCHMARK_VERSION}.json")
-    for path in (report_path, BASELINE_PATH):
+    targets = [report_path]
+    if os.path.normcase(os.path.abspath(image_dir)) == os.path.normcase(IMAGE_DIR):
+        targets.append(BASELINE_PATH)  # Baseline nur für den Standard-Bildsatz
+    for path in targets:
         _write_json_atomic(path, report, default=str)
     return report_path
 
@@ -429,6 +439,7 @@ def _normalize_entry(raw: dict, number: int, image_dir: str | None) -> dict:
         "expected": str(expected) if expected else None,
         "is_match": bool(raw.get("is_match")),
         "method": str(raw.get("method") or "Unbekannt"),
+        "method_detail": raw.get("method_detail") or None,
         "confidence": _as_float(raw.get("confidence")),
         "duration_ms": int(_as_float(raw.get("duration_ms"))),
         "fail_reason": raw.get("fail_reason") or None,
@@ -2856,7 +2867,7 @@ def _use_utf8_output():
             stream.reconfigure(encoding="utf-8", errors="replace")
 
 
-def run_headless(image_dir: str, gt_path: str, fail_on_regression: bool = False) -> int:
+def run_headless(image_dir: str, gt_path: str, fail_on_regression: bool = False, model_path: str | None = None) -> int:
     """Benchmark ohne GUI: schreibt denselben Bericht wie die GUI und vergleicht mit dem vorherigen Lauf → Exit-Code."""
     image_paths = load_image_list(image_dir)
     if not image_paths:
@@ -2864,7 +2875,12 @@ def run_headless(image_dir: str, gt_path: str, fail_on_regression: bool = False)
         return 2
     names = {os.path.basename(p) for p in image_paths}
     baseline = next((r for r in list_reports(image_dir) if report_fits(r, names)), None)  # vor dem neuen Bericht
-    model, _ = yolo_detector.load_model(APP_DIR)
+    if model_path:
+        from ultralytics import YOLO
+        print(f"YOLO-Modell: {model_path}")
+        model = YOLO(model_path)
+    else:
+        model, _ = yolo_detector.load_model(APP_DIR)
     try:
         results, summary = run_benchmark(model, image_paths, load_ground_truth(gt_path))
     except KeyboardInterrupt:
@@ -2895,11 +2911,13 @@ def main():
                         help="Benchmark ohne GUI ausführen, Bericht speichern und mit dem vorherigen Lauf vergleichen")
     parser.add_argument("--fail-on-regression", action="store_true",
                         help="mit --headless: Exit-Code 1 bei Regressionen oder falsch gelesenen Codes")
+    parser.add_argument("--model", default=None,
+                        help="mit --headless: anderes YOLO-Modell (.pt) statt des Produktionsmodells testen")
     args = parser.parse_args()
     images_dir = os.path.abspath(args.images)
     gt_file = os.path.abspath(args.gt)
     if args.headless:
-        sys.exit(run_headless(images_dir, gt_file, args.fail_on_regression))
+        sys.exit(run_headless(images_dir, gt_file, args.fail_on_regression, args.model))
     app = BenchmarkApp(images_dir, gt_file)
     app.mainloop()
     if app.run_active:
