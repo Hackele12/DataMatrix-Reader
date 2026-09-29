@@ -1,3 +1,12 @@
+"""
+vision_app.py — DataMatrixReader: Live-Ansicht, Scan und TCP-Trigger für eine oder mehrere IDS-Kameras.
+
+Jede Kamera hat einen eigenen Reiter. „Start Stream" verbindet die gewählte Kamera und öffnet den TCP-Port
+des Reiters (Kamera 1: 9500, Kamera 2: 9501, ...). Protokoll: "+" → STX <Code> CR LF EOT.
+Streams, die beim Beenden oder bei einem Absturz liefen, starten beim nächsten Programmstart automatisch.
+Start über Start_DataDetector.bat (launcher.py); dessen Watchdog startet die App nach einem Absturz neu.
+"""
+
 import os
 import sys
 import json
@@ -8,6 +17,8 @@ import time
 import socket
 import struct
 import tkinter as tk
+from logging.handlers import RotatingFileHandler
+from tkinter import messagebox
 import customtkinter as ctk
 from PIL import Image, ImageTk
 import cv2
@@ -34,9 +45,6 @@ except Exception:
     pass
 
 # --- Logging Setup (RotatingFileHandler für 24/7 Betrieb) (W1) ---
-from logging.handlers import RotatingFileHandler
-
-# Root Logger konfigurieren
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -95,7 +103,7 @@ try:
     import scanner
     import horde_db
     import yolo_detector
-    from scan_logger import ScanLogger
+    from scan_logger import ScanLogger, resolve_log_directory
     logger.info("Scanner Modul geladen.")
 except Exception as e:
     logger.error(f"Scanner Importfehler: {e}")
@@ -104,6 +112,15 @@ except Exception as e:
 # --- App-Version ---
 APP_VERSION = "21.0"
 CONFIG_FILE = "config.json"
+DEFAULT_LOG_DIR = r"U:\Temp\DataMatrixReader.logFiles"
+DEFAULT_TCP_PORT = 9500          # Kamera 1; jede weitere Kamera einen Port höher
+DEFAULT_CAMERA_SLOTS = 2
+AUTOSTART_ATTEMPTS = 10          # GigE-Kameras sind nach einem Absturz erst nach dem Heartbeat-Timeout wieder frei
+RETRY_DELAY_S = 5.0
+TRAINING_DIR = "training_data"
+AUTO_TRAIN_DIR = "auto_training_data"
+AUTO_TRAIN_MAX = 1000            # Maximale Anzahl Auto-Training-Bilder (Festplattenschutz)
+SINGLE_INSTANCE_MUTEX = "Local\\DataDetector_DataMatrixReader"
 
 # --- UI Styling (Light Theme) ---
 ctk.set_appearance_mode("Light")
@@ -180,11 +197,34 @@ def _register_unicast_ip(dm, camera_ip: str) -> None:
                 logger.warning(f"Unicast-Setup auf '{iface_name}' fehlgeschlagen: {e_iface}")
 
 
+# Kamerasuche und Öffnen aller Reiter nacheinander (DeviceManager ist nicht für parallele Updates gedacht)
+_IDS_LOCK = threading.Lock()
+
+
+def _configured_camera_ips(cfg: dict) -> list[str]:
+    """Kamera-IPs aus config.json (global und pro Kamera) für die Unicast-Suche."""
+    ips = [cfg.get("camera_ip")] + [c.get("camera_ip") for c in cfg.get("cameras") or [] if isinstance(c, dict)]
+    return list(dict.fromkeys(ip for ip in ips if ip))
+
+
+def _register_camera_ips(dm, camera_ips: list[str]) -> None:
+    """Unicast-Suche für konfigurierte Kamera-IPs (z.B. Kameras in einem anderen Subnetz)."""
+    if not camera_ips:
+        return
+    dm.Update()  # Erste Update-Runde, damit Interfaces geöffnet werden
+    for camera_ip in camera_ips:
+        try:
+            _register_unicast_ip(dm, camera_ip)
+        except Exception as e:
+            logger.warning(f"Unicast-Konfiguration für {camera_ip} fehlgeschlagen: {e}")
+
+
 class IDSFrameGrabber:
     """
     IDS peak SDK Frame-Grabber:
     Läuft in einem eigenen Thread und holt Bilder direkt von der IDS GigE-Kamera.
     Konvertiert Monochrom-Rohdaten automatisch zu BGR8 für OpenCV-Kompatibilität.
+    Die IDS-Bibliothek wird einmal pro Programm initialisiert (main).
     """
     def __init__(self):
         self.frame = None
@@ -210,7 +250,7 @@ class IDSFrameGrabber:
         self._current_brightness = 0           # Aktuelle Helligkeit (für UI)
 
     @staticmethod
-    def list_cameras() -> list[dict]:
+    def list_cameras(camera_ips: list[str]) -> list[dict]:
         """
         Listet alle im System verfügbaren IDS-Kameras auf.
         
@@ -221,98 +261,80 @@ class IDSFrameGrabber:
         if not IDS_AVAILABLE:
             return cameras
         try:
-            ids_peak.Library.Initialize()
-            dm = ids_peak.DeviceManager.Instance()
-
-            camera_ip = _load_config().get("camera_ip")
-            if camera_ip:
-                try:
-                    dm.Update()
-                    _register_unicast_ip(dm, camera_ip)
-                except Exception:
-                    pass
-
-            dm.Update()
-            devices = dm.Devices()
-            for idx in range(_count(devices)):
-                desc = devices[idx]
-                model = desc.ModelName()
-                serial = desc.SerialNumber()
-                display_name = f"{model} ({serial})"
-                cameras.append({
-                    "serial": serial,
-                    "model": model,
-                    "display_name": display_name,
-                    "index": idx
-                })
+            with _IDS_LOCK:
+                dm = ids_peak.DeviceManager.Instance()
+                _register_camera_ips(dm, camera_ips)
+                dm.Update()
+                devices = dm.Devices()
+                for idx in range(_count(devices)):
+                    desc = devices[idx]
+                    model = desc.ModelName()
+                    serial = desc.SerialNumber()
+                    cameras.append({
+                        "serial": serial,
+                        "model": model,
+                        "display_name": f"{model} ({serial})",
+                        "index": idx
+                    })
         except Exception as e:
             logger.warning(f"Fehler bei Kamera-Auflistung: {e}")
-        finally:
-            try:
-                ids_peak.Library.Close()
-            except Exception:
-                pass
         return cameras
 
-    def start(self, target_serial: str | None = None):
-        """Kamera finden, öffnen, Buffer anlegen und Aufnahme starten."""
+    def start(self, target_serial: str | None = None, camera_ips: list[str] | None = None) -> bool:
+        """Kamera öffnen (per Seriennummer, ohne Vorgabe die erste freie), Buffer anlegen und Aufnahme starten."""
         if not IDS_AVAILABLE:
             logger.error("IDS peak SDK nicht installiert!")
             return False
         try:
-            ids_peak.Library.Initialize()
-            dm = ids_peak.DeviceManager.Instance()
-
-            # --- Unicast-Erkennung für Netzwerk-Kameras konfigurieren ---
-            camera_ip = _load_config().get("camera_ip")
-            if camera_ip:
-                logger.info(f"Konfiguriere Unicast-Suche für Kamera-IP: {camera_ip} (0x{_ip_to_int(camera_ip):08X})")
-                # Erste Update-Runde, damit Interfaces geöffnet werden
+            with _IDS_LOCK:
+                dm = ids_peak.DeviceManager.Instance()
+                _register_camera_ips(dm, camera_ips or [])
                 dm.Update()
-                try:
-                    _register_unicast_ip(dm, camera_ip)
-                except Exception as e_systems:
-                    logger.warning(f"Fehler bei der Unicast-Konfiguration: {e_systems}")
+                devices = dm.Devices()
+                dev_count = _count(devices)
+                if dev_count == 0:
+                    logger.error("Keine IDS-Kamera gefunden!")
+                    return False
 
-            dm.Update()
-            devices = dm.Devices()
-            dev_count = _count(devices)
-            if dev_count == 0:
-                logger.error("Keine IDS-Kamera gefunden!")
-                ids_peak.Library.Close()
-                return False
+                desc = None
+                if target_serial:
+                    # Kein Ausweichen auf eine andere Kamera: sie könnte zu einem anderen Reiter/Port gehören
+                    for idx in range(dev_count):
+                        if devices[idx].SerialNumber() == target_serial:
+                            desc = devices[idx]
+                            logger.info(f"Ziel-Kamera gewählt: {desc.ModelName()} (S/N: {target_serial})")
+                            break
+                    if desc is None:
+                        logger.error(f"Kamera S/N {target_serial} nicht gefunden!")
+                        return False
+                else:
+                    for idx in range(dev_count):
+                        if devices[idx].IsOpenable():
+                            desc = devices[idx]
+                            logger.info(f"Erste freie Kamera gewählt: {desc.ModelName()} (S/N: {desc.SerialNumber()})")
+                            break
+                    if desc is None:
+                        logger.error("Keine freie IDS-Kamera gefunden!")
+                        return False
 
-            desc = None
-            if target_serial:
-                for idx in range(dev_count):
-                    d = devices[idx]
-                    if d.SerialNumber() == target_serial:
-                        desc = d
-                        logger.info(f"Ziel-Kamera gewählt: {d.ModelName()} (S/N: {target_serial})")
-                        break
+                self.model_name = desc.ModelName()
+                self.serial = desc.SerialNumber()
 
-            if desc is None:
-                desc = devices[0]
-                logger.info(f"Standard-Kamera (0) gewählt: {desc.ModelName()} (S/N: {desc.SerialNumber()})")
+                self._device = desc.OpenDevice(ids_peak.DeviceAccessType_Control)
+                self._nodemap = self._device.RemoteDevice().NodeMaps()[0]
+                self._ds = self._device.DataStreams()[0].OpenDataStream()
 
-            self.model_name = desc.ModelName()
-            self.serial = desc.SerialNumber()
+                payload = self._nodemap.FindNode("PayloadSize").Value()
+                buf_count = max(self._ds.NumBuffersAnnouncedMinRequired(), 3)
+                for _ in range(buf_count):
+                    buf = self._ds.AllocAndAnnounceBuffer(payload)
+                    self._ds.QueueBuffer(buf)
+                    self._buffers.append(buf)
 
-            self._device = desc.OpenDevice(ids_peak.DeviceAccessType_Control)
-            self._nodemap = self._device.RemoteDevice().NodeMaps()[0]
-            self._ds = self._device.DataStreams()[0].OpenDataStream()
-
-            payload = self._nodemap.FindNode("PayloadSize").Value()
-            buf_count = max(self._ds.NumBuffersAnnouncedMinRequired(), 3)
-            for _ in range(buf_count):
-                buf = self._ds.AllocAndAnnounceBuffer(payload)
-                self._ds.QueueBuffer(buf)
-                self._buffers.append(buf)
-
-            if self._nodemap.HasNode("TLParamsLocked"):
-                self._nodemap.FindNode("TLParamsLocked").SetValue(True)
-            self._ds.StartAcquisition()
-            self._nodemap.FindNode("AcquisitionStart").Execute()
+                if self._nodemap.HasNode("TLParamsLocked"):
+                    self._nodemap.FindNode("TLParamsLocked").SetValue(True)
+                self._ds.StartAcquisition()
+                self._nodemap.FindNode("AcquisitionStart").Execute()
 
             self.running = True
             self._thread = threading.Thread(target=self._grab_loop, daemon=True)
@@ -320,7 +342,6 @@ class IDSFrameGrabber:
             return True
         except Exception as e:
             logger.error(f"IDS Kamera Start fehlgeschlagen: {e}")
-            self._cleanup_partial()
             return False
 
     def _grab_loop(self):
@@ -474,93 +495,74 @@ class IDSFrameGrabber:
             self._device.Close()
         except Exception:
             pass
-        try:
-            ids_peak.Library.Close()
-        except Exception:
-            pass
         self.frame = None
-        logger.info("IDS Kamera sauber geschlossen.")
-
-    def _cleanup_partial(self):
-        """Aufräumen nach fehlgeschlagenem Start."""
-        try:
-            ids_peak.Library.Close()
-        except Exception:
-            pass
+        logger.info(f"IDS Kamera {self.serial} sauber geschlossen.")
 
 
-class AIVisionApp(ctk.CTk):
-    def __init__(self):
-        super().__init__()
-        self.title(f"AI Vision Core  —  DataDetector v{APP_VERSION}")
-        self.geometry("1280x760")
-        self.minsize(900, 600)
-        self.configure(fg_color=BG_MAIN)
+class CameraPanel(ctk.CTkFrame):
+    """Reiter einer Kamera: Auswahl, Live-Ansicht und Scan; der TCP-Port ist offen, solange der Stream läuft."""
+
+    def __init__(self, master, app: "DataMatrixReaderApp", slot: dict, tcp_port: int, tab_name: str):
+        super().__init__(master, fg_color="transparent", corner_radius=0)
+        self.app = app
+        self._slot = slot  # Eintrag in config["cameras"]
+        self.cam_id = slot["id"]
+        self.cam_name = slot["name"]
+        self.tcp_port = tcp_port
+        self.tab_name = tab_name
+        self.visible = False  # nur der sichtbare Reiter zeichnet die Live-Ansicht
+        self._closed = False
 
         self.stream_running = False
+        self._connecting = False
         self._stopping = False  # Guard gegen doppelten Stop
-        self.model = None
-        self._is_2class = False
-        self._model_lock = threading.Lock()  # Thread-Sperre für YOLO-Modell
+        self.active_serial: str | None = None  # Kamera, die gerade verbunden wird oder streamt
         self.grabber: IDSFrameGrabber | None = None
+        self.scan_logger: ScanLogger | None = None  # wird beim ersten Stream-Start angelegt
         self._display_thread = None
         self._scan_running = False
         self._last_frame = None
         self._canvas_img_id = None  # Tracking für Canvas-Bild (Speicherleck-Fix)
+        self._scan_counter = 0
+        self._camera_map = {}  # Map: display_name -> serial
 
         # --- Smart Auto-Scan (Präsenzerkennung) ---
-        self.auto_scan_enabled = False
+        self.auto_scan_enabled = bool(self._setting("auto_scan", False))
         self._presence_state = "EMPTY"  # "EMPTY" | "SCANNED"
         self._presence_counter = 0
         self._absence_counter = 0
-
-        # --- ROI / Zoom State ---
-        self._roi = None
-        self._drawing = False
-        self._draw_start = None
-        self._draw_rect_id = None
-        self._display_scale = 1.0
-        self._display_offset = (0, 0)
 
         # --- YOLO Inferenz Throttling ---
         self._last_infer_time = 0.0
         self._last_detections = None  # Gecachtes Inferenz-Ergebnis
 
-        # --- Config laden (URL Persistenz) ---
-        self._config = _load_config()
-
-        # --- TCP Server Attribute VOR _build_ui() definieren ---
-        self.tcp_port = int(self._config.get("tcp_port", 9500))
-        self._tcp_running = False
-        self._tcp_thread = None
+        # --- TCP-Server (nur während der Stream läuft) ---
+        self._tcp_server: socket.socket | None = None
+        self._tcp_stop: threading.Event | None = None
         self._tcp_scan_token = 0
         self._tcp_scan_lock = threading.Lock()
 
-        self.training_dir = "training_data"
-        os.makedirs(self.training_dir, exist_ok=True)
-
-        # --- Active Learning State ---
-        self._auto_train_dir = "auto_training_data"
-        self._auto_train_max = 1000  # Maximale Anzahl Auto-Training-Bilder (Festplattenschutz)
-        os.makedirs(os.path.join(self._auto_train_dir, "images"), exist_ok=True)
-        os.makedirs(os.path.join(self._auto_train_dir, "labels"), exist_ok=True)
-        self._auto_train_count = len(os.listdir(os.path.join(self._auto_train_dir, "images")))
-        self._scan_counter = 0
-
-        self._camera_map = {}  # Map: display_name -> serial
-
         self._build_ui()
 
-        # --- Kameras beim Start im Hintergrund auflisten ---
-        self.after(200, self.refresh_cameras)
+    # ------------------------------------------------------------------ #
+    #  Einstellungen dieser Kamera                                         #
+    # ------------------------------------------------------------------ #
+    def _setting(self, key: str, default=None):
+        """Wert dieser Kamera; ohne eigenen Wert gilt der bisherige globale Wert aus config.json."""
+        return self._slot.get(key, self.app.config_data.get(key, default))
 
-        # --- Scan-Logger initialisieren ---
-        master_log_dir = self._config.get("log_dir", r"U:\Temp\DataMatrixReader.logFiles")
-        save_all = self._config.get("save_all_scans", False)
-        self.scan_logger = ScanLogger(log_dir=master_log_dir, save_all_scans=save_all)
+    def _store(self, **values):
+        self._slot.update(values)
+        self.app.save_config()
 
-        # --- TCP Server (Hintergrund-Dienst) starten ---
-        self._start_tcp_server()
+    @property
+    def saved_serial(self) -> str | None:
+        return self._slot.get("selected_camera_serial")
+
+    @property
+    def autostart_requested(self) -> bool:
+        """Stream lief beim letzten Programmende (oder Absturz) und wurde nicht per Stop beendet."""
+        return bool(self._slot.get("stream_active", False))
 
     # ------------------------------------------------------------------ #
     #  UI Builder                                                          #
@@ -570,20 +572,20 @@ class AIVisionApp(ctk.CTk):
         self.grid_rowconfigure(0, weight=1)
 
         # -- Sidebar --
-        self.sidebar = ctk.CTkFrame(self, width=230, corner_radius=0, fg_color=BG_SIDE,
+        self.sidebar = ctk.CTkFrame(self, width=230, corner_radius=12, fg_color=BG_SIDE,
                                     border_width=1, border_color=BORDER)
-        self.sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew")
+        self.sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 12))
         self.sidebar.grid_propagate(False)
         self.sidebar.grid_rowconfigure(14, weight=1)
 
         ctk.CTkLabel(
-            self.sidebar, text="AI Vision Core",
+            self.sidebar, text=self.cam_name,
             font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
             text_color=ACCENT
         ).grid(row=0, column=0, padx=20, pady=(24, 2))
 
         ctk.CTkLabel(
-            self.sidebar, text=f"DataDetector v{APP_VERSION}",
+            self.sidebar, text=f"DataMatrixReader v{APP_VERSION}",
             font=ctk.CTkFont(size=11), text_color=TXT_LIGHT
         ).grid(row=1, column=0, padx=20, pady=(0, 16))
 
@@ -606,7 +608,7 @@ class AIVisionApp(ctk.CTk):
         self.cam_refresh_btn = ctk.CTkButton(
             self.cam_frame, text="⟳", width=28, height=28,
             fg_color=TXT_MID, hover_color="#64748B",
-            command=self.refresh_cameras
+            command=self.app.refresh_cameras
         )
         self.cam_refresh_btn.grid(row=0, column=1, sticky="e")
 
@@ -619,9 +621,9 @@ class AIVisionApp(ctk.CTk):
         self.settings_frame.grid(row=5, column=0, padx=20, pady=(4, 10), sticky="ew")
         self.settings_frame.grid_columnconfigure(0, weight=1)
 
-        saved_pct = self._config.get("auto_exposure_target_pct")
+        saved_pct = self._setting("auto_exposure_target_pct")
         if saved_pct is None:
-            saved_target = self._config.get("auto_exposure_target", 130)
+            saved_target = self._setting("auto_exposure_target", 130)
             saved_pct = max(0, min(100, int((saved_target - 40) / 180.0 * 100)))
 
         self.brightness_target_label = ctk.CTkLabel(
@@ -684,8 +686,7 @@ class AIVisionApp(ctk.CTk):
             font=ctk.CTkFont(size=12, weight="bold"), text_color=TXT_DARK,
             command=self._on_auto_scan_toggled
         )
-        if self._config.get("auto_scan", False):
-            self.auto_scan_enabled = True
+        if self.auto_scan_enabled:
             self.auto_scan_switch.select()
         self.auto_scan_switch.grid(row=11, column=0, padx=20, pady=(6, 2), sticky="w")
 
@@ -694,13 +695,13 @@ class AIVisionApp(ctk.CTk):
             font=ctk.CTkFont(size=11, weight="bold"), text_color=TXT_DARK,
             command=self._on_save_all_scans_toggled
         )
-        if self._config.get("save_all_scans", False):
+        if self._setting("save_all_scans", False):
             self.save_all_scans_switch.select()
         self.save_all_scans_switch.grid(row=12, column=0, padx=20, pady=(2, 6), sticky="w")
 
         self.tcp_info_label = ctk.CTkLabel(
-            self.sidebar, text=f"TCP Port {self.tcp_port}: AKTIV",
-            font=ctk.CTkFont(size=11, weight="bold"), text_color=SUCCESS
+            self.sidebar, text=f"TCP Port {self.tcp_port}: AUS",
+            font=ctk.CTkFont(size=11, weight="bold"), text_color=TXT_LIGHT
         )
         self.tcp_info_label.grid(row=13, column=0, padx=20, pady=(4, 0))
 
@@ -721,7 +722,7 @@ class AIVisionApp(ctk.CTk):
         # -- Hauptbereich --
         self.main_frame = ctk.CTkFrame(self, corner_radius=12, fg_color=BG_CARD,
                                        border_width=1, border_color=BORDER)
-        self.main_frame.grid(row=0, column=1, padx=(0, 16), pady=16, sticky="nsew")
+        self.main_frame.grid(row=0, column=1, pady=(0, 12), sticky="nsew")
         self.main_frame.grid_columnconfigure(0, weight=1)
         self.main_frame.grid_rowconfigure(0, weight=1)
 
@@ -737,7 +738,7 @@ class AIVisionApp(ctk.CTk):
         # -- Ergebnis-Panel --
         self.result_panel = ctk.CTkFrame(self, corner_radius=12, fg_color=BG_CARD,
                                          height=130, border_width=1, border_color=BORDER)
-        self.result_panel.grid(row=1, column=1, padx=(0, 16), pady=(0, 16), sticky="ew")
+        self.result_panel.grid(row=1, column=1, sticky="ew")
         self.result_panel.grid_columnconfigure(1, weight=1)
         self.result_panel.grid_propagate(False)
 
@@ -774,7 +775,7 @@ class AIVisionApp(ctk.CTk):
 
         self.auto_train_label = ctk.CTkLabel(
             self.result_panel,
-            text=f"Auto-Training: {self._auto_train_count} Bilder",
+            text=f"Auto-Training: {self.app.auto_train_count} Bilder",
             font=ctk.CTkFont(size=10), text_color=TXT_LIGHT, anchor="e"
         )
         self.auto_train_label.grid(row=2, column=2, padx=(8, 16), pady=(0, 2), sticky="e")
@@ -784,264 +785,91 @@ class AIVisionApp(ctk.CTk):
         pct = int(val)
         target_br = int(40 + (pct / 100.0) * 180)
         self.brightness_target_label.configure(text=f"Ziel-Helligkeit: {pct}%")
-        self._config["auto_exposure_target_pct"] = pct
-        self._config["auto_exposure_target"] = target_br
-        _save_config(self._config)
+        self._store(auto_exposure_target_pct=pct, auto_exposure_target=target_br)
 
         if self.grabber:
             self.grabber.auto_exposure_target = target_br
+
+    # ------------------------------------------------------------------ #
+    #  Kamera-Auswahl                                                      #
+    # ------------------------------------------------------------------ #
+    def update_camera_list(self, cameras: list[dict], taken: set[str]) -> str | None:
+        """
+        Aktualisiert das Dropdown: die gespeicherte Kamera bleibt gewählt (auch wenn sie gerade fehlt),
+        sonst wird die erste noch keinem Reiter zugeordnete Kamera vorgeschlagen. → angezeigte S/N
+        """
+        self._camera_map = {cam["display_name"]: cam["serial"] for cam in cameras}
+        names = list(self._camera_map)
+        saved = self.saved_serial
+        shown = next((name for name, serial in self._camera_map.items() if serial == saved), None)
+        if shown is None and saved:
+            shown = f"S/N {saved} (nicht gefunden)"
+            self._camera_map[shown] = saved
+            names.insert(0, shown)
+        if shown is None:
+            shown = next((name for name, serial in self._camera_map.items() if serial not in taken), None)
+
+        self.camera_optionmenu.configure(values=names or ["Keine Kamera gefunden"])
+        if shown is not None:
+            self.camera_optionmenu.set(shown)
+        else:
+            self.camera_optionmenu.set("Kamera wählen..." if names else "Keine Kamera gefunden")
+        return self._camera_map.get(shown)
+
+    def _on_camera_selected(self, selected_display_name: str):
+        serial = self._camera_map.get(selected_display_name)
+        if not serial or serial == self.saved_serial:
+            return
+
+        logger.info(f"[{self.cam_name}] Kamera gewechselt zu: {selected_display_name} (S/N: {serial})")
+        self._store(selected_camera_serial=serial)
+
+        # Falls der Stream gerade läuft, neu starten
+        if self.stream_running:
+            self._stop_stream()
+            self.after(500, self.start_stream)
+
+    def _on_auto_scan_toggled(self):
+        val = bool(self.auto_scan_switch.get())
+        self.auto_scan_enabled = val
+        self._store(auto_scan=val)
+        logger.info(f"[{self.cam_name}] Auto-Scan Modus geändert: {val}")
+
+    def _on_save_all_scans_toggled(self):
+        val = bool(self.save_all_scans_switch.get())
+        self._store(save_all_scans=val)
+        if self.scan_logger:
+            self.scan_logger.save_all_scans = val
+        logger.info(f"[{self.cam_name}] Bilder-Speicher-Modus: "
+                    f"{'ALLE Bilder speichern' if val else 'Nur FEHLER-Bilder speichern'}")
 
     # ------------------------------------------------------------------ #
     #  Stream Steuerung                                                    #
     # ------------------------------------------------------------------ #
     def toggle_stream(self):
         if not self.stream_running:
-            self._start_stream()
+            self.start_stream()
         else:
+            self._store(stream_active=False)  # bewusst gestoppt → kein Autostart beim nächsten Programmstart
             self._stop_stream()
 
-    def refresh_cameras(self):
-        """Sucht nach verfügbaren IDS-Kameras und aktualisiert das Dropdown-Menü."""
-        def _worker():
-            cameras = IDSFrameGrabber.list_cameras()
-            self.after(0, lambda: self._update_camera_dropdown(cameras))
-        threading.Thread(target=_worker, daemon=True).start()
-
-    def _update_camera_dropdown(self, cameras: list[dict]):
-        self._camera_map.clear()
-        if not cameras:
-            display_values = ["Keine Kamera gefunden"]
-            self.camera_optionmenu.configure(values=display_values)
-            self.camera_optionmenu.set("Keine Kamera gefunden")
+    def start_stream(self, autostart: bool = False):
+        if self.stream_running or self._connecting:
             return
-
-        display_values = []
-        for cam in cameras:
-            name = cam["display_name"]
-            serial = cam["serial"]
-            self._camera_map[name] = serial
-            display_values.append(name)
-
-        self.camera_optionmenu.configure(values=display_values)
-
-        # Gespeicherte Kamera auswählen falls vorhanden
-        saved_serial = self._config.get("selected_camera_serial")
-        selected_name = display_values[0]
-        if saved_serial:
-            for name, serial in self._camera_map.items():
-                if serial == saved_serial:
-                    selected_name = name
-                    break
-
-        self.camera_optionmenu.set(selected_name)
-        if selected_name in self._camera_map:
-            self._config["selected_camera_serial"] = self._camera_map[selected_name]
-            _save_config(self._config)
-
-    def _on_camera_selected(self, selected_display_name: str):
-        serial = self._camera_map.get(selected_display_name)
-        if not serial:
-            return
-        if self._config.get("selected_camera_serial") == serial:
-            return
-
-        logger.info(f"Kamera gewechselt zu: {selected_display_name} (S/N: {serial})")
-        self._config["selected_camera_serial"] = serial
-        _save_config(self._config)
-
-        # Falls der Stream gerade läuft, neu starten
-        if self.stream_running:
-            self._stop_stream()
-            self.after(500, self._start_stream)
-
-
-    def _on_auto_scan_toggled(self):
-        val = bool(self.auto_scan_switch.get())
-        self.auto_scan_enabled = val
-        self._config["auto_scan"] = val
-        _save_config(self._config)
-        logger.info(f"Auto-Scan Modus geändert: {val}")
-
-    def _on_save_all_scans_toggled(self):
-        val = bool(self.save_all_scans_switch.get())
-        self._config["save_all_scans"] = val
-        _save_config(self._config)
-        if self.scan_logger:
-            self.scan_logger.save_all_scans = val
-        logger.info(f"Bilder-Speicher-Modus: {'ALLE Bilder speichern' if val else 'Nur FEHLER-Bilder speichern'}")
-
-    # ------------------------------------------------------------------ #
-    #  TCP Server (Hintergrund-Dienst)                                    #
-    # ------------------------------------------------------------------ #
-    def _start_tcp_server(self):
-        """Startet den TCP-Server-Thread für externe Netzwerk-Trigger (z. B. '+')."""
-        self._tcp_running = True
-        self._tcp_thread = threading.Thread(target=self._run_tcp_server, daemon=True)
-        self._tcp_thread.start()
-
-    def _run_tcp_server(self):
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            server.bind(('0.0.0.0', self.tcp_port))
-            server.listen(5)
-            logger.info(f"[GUI TCP SERVER] Lauscht auf Port {self.tcp_port}")
-            self.after(0, lambda: self._update_tcp_label(f"TCP Port {self.tcp_port}: AKTIV"))
-        except Exception as e:
-            logger.error(f"[GUI TCP SERVER] Start-Fehler auf Port {self.tcp_port}: {e}")
-            self.after(0, lambda: self._update_tcp_label(f"TCP Port {self.tcp_port}: FEHLER"))
-            return
-
-        while self._tcp_running:
-            try:
-                conn, addr = server.accept()
-                conn.settimeout(1.0)
-                logger.info(f"[GUI TCP SERVER] Client verbunden: {addr}")
-                try:
-                    while self._tcp_running:
-                        try:
-                            data = conn.recv(1024)
-                            if not data:
-                                break
-                            if b"+" in data:
-                                with self._tcp_scan_lock:
-                                    self._tcp_scan_token += 1
-                                    my_token = self._tcp_scan_token
-                                logger.info(f"[GUI TCP SERVER] Trigger '+' (Token {my_token}) empfangen. Starte Auswertung...")
-                                code = self._process_tcp_trigger_scan(token_id=my_token)
-                                if code is not None:
-                                    response_bytes = b"\x02" + code.encode("utf-8") + b"\r\n\x04"
-                                    conn.sendall(response_bytes)
-                                else:
-                                    logger.info(f"[GUI TCP SERVER] Scan (Token {my_token}) wurde verworfen — keine Antwort gesendet.")
-                            else:
-                                conn.sendall(b"\x02ERROR_UNKNOWN_COMMAND\r\n\x04")
-                        except socket.timeout:
-                            continue
-                except Exception as e_c:
-                    logger.error(f"[GUI TCP SERVER] Kommunikationsfehler: {e_c}")
-                finally:
-                    conn.close()
-            except Exception as e_s:
-                if self._tcp_running:
-                    logger.error(f"[GUI TCP SERVER] Server-Loop beendet: {e_s}")
-                break
-        try:
-            server.close()
-        except Exception:
-            pass
-
-    def _update_tcp_label(self, text: str):
-        if hasattr(self, "tcp_info_label"):
-            self.tcp_info_label.configure(text=text)
-
-    def _detect_labels(self, snapshot: np.ndarray) -> tuple[list[dict], bool, float, tuple | None, np.ndarray]:
-        """
-        YOLO-Detektion vor dem Scan (Thread-Sperre gegen gleichzeitige Nutzung durch die Display-Loop).
-
-        Returns:
-            (Detektionen mit conf > 0.3, 2-Klassen-Modus, beste Konfidenz,
-             Etikett-Box im 1-Klassen-Modus, zu scannendes Bild)
-        """
-        if self.model is None:
-            return [], False, 0.0, None, snapshot
-        with self._model_lock:
-            results = self.model.predict(snapshot, conf=yolo_detector.PREDICT_CONF, verbose=False)
-        detections = yolo_detector.extract_detections(results[0], min_conf=0.3) if results else []
-
-        detected_classes = {d["cls"] for d in detections}
-        if self._is_2class and (0 in detected_classes or 1 in detected_classes):
-            detection_conf = max(d["conf"] for d in detections)
-            logger.info(f"2-Klassen-Modus: {len(detections)} Detections (Klassen: {detected_classes}, "
-                        f"max Conf: {detection_conf:.2f})")
-            return detections, True, detection_conf, None, snapshot
-        if detections:
-            best_det = max(detections, key=lambda d: d["conf"])
-            scan_frame = scanner.deskew_crop(snapshot, best_det["box"], padding=60)
-            logger.info(f"1-Klassen KI Etikett gefunden! Konfidenz: {best_det['conf']:.2f}. Ausschneiden und "
-                        f"Begradigen auf {scan_frame.shape[1]}x{scan_frame.shape[0]}.")
-            return detections, False, best_det["conf"], best_det["box"], scan_frame
-        logger.warning("KI hat kein Etikett gefunden, scanne gesamtes Bild.")
-        return detections, False, 0.0, None, snapshot
-
-    def _process_tcp_trigger_scan(self, token_id: int = 0) -> str | None:
-        """Wird aufgerufen wenn per TCP ein Trigger '+' empfangen wird."""
-        cancellation_check = lambda: (token_id > 0 and self._tcp_scan_token != token_id)
-
-        frame = None
-        if self.grabber is not None:
-            frame = self.grabber.get_frame()
-        if frame is None and self._last_frame is not None:
-            frame = self._last_frame.copy()
-
-        if frame is None:
-            logger.error("[GUI TCP SERVER] Kein Kamerabild verfügbar!")
-            return "ERROR_NO_FRAME"
-
-        start_time = time.time()
-        scan_snapshot = frame.copy()
-        yolo_detections, use_2class, detection_conf, detection_box, scan_frame = self._detect_labels(scan_snapshot)
-
-        # Abbrechen & Verwerfen falls in der Zwischenzeit ein neuer Trigger empfangen wurde
-        if cancellation_check():
-            logger.warning(f"[GUI TCP SERVER] Scan (Token {token_id}) VOR Auswertung abgebrochen & VERWORFEN!")
-            return None
-
-        if use_2class:
-            result = scanner.scan_2class(scan_snapshot, yolo_detections, cancellation_check=cancellation_check)
+        if autostart:
+            serial = self.saved_serial
         else:
-            result = scanner.scan(scan_frame, cancellation_check=cancellation_check)
+            serial = self._camera_map.get(self.camera_optionmenu.get()) or self.saved_serial
+        if serial is None and self._camera_map:
+            self._set_status("Bitte Kamera auswählen.", WARN)
+            return
+        owner = self.app.panel_using_camera(serial, exclude=self) if serial else None
+        if owner is not None:
+            self._set_status(f"Kamera läuft bereits in {owner.cam_name}!", DANGER)
+            return
 
-        # Abbrechen & Verwerfen falls während der Auswertung ein neuer Trigger empfangen wurde
-        if cancellation_check() or result.get("cancelled"):
-            logger.warning(f"[GUI TCP SERVER] Scan (Token {token_id}) NACH Auswertung VERWORFEN (neuer Trigger).")
-            return None
-
-        duration_ms = int((time.time() - start_time) * 1000)
-        result["duration_ms"] = duration_ms
-        logger.info(f"[GUI TCP SERVER] Scan fertig ({duration_ms}ms): {result}")
-
-        # Logging (nur für gültige, nicht stornierte Scans)
-        if self.scan_logger is not None:
-            timing_info = {"total_ms": duration_ms, "yolo_ms": 0, "scan_ms": duration_ms}
-            detection_info = {
-                "yolo_conf": detection_conf,
-                "crop_size": [scan_frame.shape[1], scan_frame.shape[0]] if detection_box else None,
-                "label_detected": (use_2class or detection_box is not None),
-            }
-            exp_val = float(self._config.get("last_exposure", 20.0))
-            gain_val = float(self._config.get("last_gain", 1.0))
-            # Bei Auto-Exposure: Tatsächliche Werte vom Grabber verwenden
-            if self.grabber and getattr(self.grabber, 'auto_exposure_enabled', False):
-                exp_val = getattr(self.grabber, 'exposure_us', exp_val * 1000.0) / 1000.0
-                gain_val = getattr(self.grabber, 'gain', gain_val)
-            meta_info = {
-                "camera_model": self.grabber.model_name if self.grabber else "",
-                "camera_serial": self.grabber.serial if self.grabber else "",
-                "exposure_us": exp_val * 1000.0,
-                "gain": gain_val,
-                "app_version": APP_VERSION,
-                "port": self.tcp_port,
-                "trigger": "TCP",
-                "auto_exposure": getattr(self.grabber, 'auto_exposure_enabled', False) if self.grabber else False
-            }
-            self.scan_logger.log_scan(
-                scan_result=result,
-                frame=scan_snapshot,
-                timing=timing_info,
-                detection_info=detection_info,
-                meta=meta_info,
-            )
-
-        # Update GUI live in main thread
-        self.after(0, self._update_result, result)
-
-        if result["success"]:
-            return result["result"]
-        else:
-            return "ERROR"
-
-    def _start_stream(self):
+        self._connecting = True
+        self.active_serial = serial
         # UI in Lade-Zustand versetzen
         self.start_btn.configure(state="disabled", text="...Verbinde")
         self._set_status("Lade Modell & Stream...", ACCENT)
@@ -1049,81 +877,108 @@ class AIVisionApp(ctk.CTk):
         self.loading_bar.start()         # Animation starten
 
         # Schwere Arbeit im Hintergrund-Thread
-        threading.Thread(target=self._start_stream_worker, daemon=True).start()
+        threading.Thread(target=self._start_stream_worker, args=(serial, autostart), daemon=True).start()
 
-    def _start_stream_worker(self):
-        """Laeuft im Hintergrund-Thread: YOLO laden + Kamera verbinden."""
+    def _start_stream_worker(self, serial: str | None, autostart: bool):
+        """Laeuft im Hintergrund-Thread: YOLO laden + Kamera verbinden (Autostart wartet auf die Kamera)."""
         try:
             # 1) YOLO Modell laden (kann 5-20 Sekunden dauern); ultralytics wird erst hier importiert,
-            #    damit die GUI sofort startet.
-            if self.model is None:
+            #    damit die GUI sofort startet. Alle Reiter teilen sich das Modell.
+            if self.app.model is None:
                 self.after(0, lambda: self._set_status("Lade KI-Modell...", ACCENT))
-                self.model, self._is_2class = yolo_detector.load_model()
+            self.app.ensure_model()
+
+            if self.scan_logger is None:
+                # Eigener Log-Unterordner pro Kamera (der Log Analyzer zeigt ihn als Kamera an)
+                self.scan_logger = ScanLogger(log_dir=os.path.join(self.app.log_base_dir, self.cam_id),
+                                              save_all_scans=bool(self._setting("save_all_scans", False)))
 
             # 2) Kamera-Stream verbinden
-            self.after(0, lambda: self._set_status("Verbinde mit Kamera...", WARN))
-            grabber = IDSFrameGrabber()
-            if not grabber.start(target_serial=self._config.get("selected_camera_serial")):
-                self.after(0, self._on_stream_failed)
-                return
-
-            self.grabber = grabber
-            self._configure_grabber(grabber)
-            self.after(0, self._on_stream_connected)
+            attempts = AUTOSTART_ATTEMPTS if autostart else 1
+            for attempt in range(1, attempts + 1):
+                if self._closed:
+                    return
+                self.after(0, lambda: self._set_status("Verbinde mit Kamera...", WARN))
+                grabber = self._open_camera(serial)
+                if grabber is not None:
+                    self.grabber = grabber
+                    self.after(0, self._on_stream_connected)
+                    return
+                if attempt < attempts:
+                    logger.warning(f"[{self.cam_name}] Autostart: Kamera nicht erreichbar "
+                                   f"(Versuch {attempt}/{attempts}), neuer Versuch in {RETRY_DELAY_S:.0f} s.")
+                    self.after(0, lambda a=attempt: self._set_status(
+                        f"Warte auf Kamera... ({a}/{attempts})", WARN))
+                    time.sleep(RETRY_DELAY_S)
+            self.after(0, self._on_stream_failed)
 
         except Exception as e:
-            logger.error(f"Stream-Start Fehler: {e}")
-            self.after(0, lambda: self._on_stream_error(str(e)))
+            logger.error(f"[{self.cam_name}] Stream-Start Fehler: {e}")
+            self.after(0, self._on_stream_error, str(e))
+
+    def _open_camera(self, serial: str | None) -> IDSFrameGrabber | None:
+        grabber = IDSFrameGrabber()
+        if not grabber.start(target_serial=serial, camera_ips=self.app.camera_ips):
+            return None
+        self._configure_grabber(grabber)
+        return grabber
 
     def _configure_grabber(self, grabber: IDSFrameGrabber):
         """Übernimmt Belichtung, Gain und Auto-Exposure-Parameter aus der Config."""
+        cfg = self.app.config_data
         try:
-            exp_val = float(self._config.get("last_exposure", 20.0))
-            gain_val = float(self._config.get("last_gain", 1.0))
+            exp_val = float(cfg.get("last_exposure", 20.0))
+            gain_val = float(cfg.get("last_gain", 1.0))
             grabber.set_exposure(exp_val * 1000.0)
             grabber.set_gain(gain_val)
         except Exception:
             pass
 
-        if self._config.get("auto_exposure_enabled", False):
+        if cfg.get("auto_exposure_enabled", False):
             grabber.auto_exposure_enabled = True
-            grabber.auto_exposure_target = int(self._config.get("auto_exposure_target", 130))
-            grabber.auto_exposure_deadzone = int(self._config.get("auto_exposure_deadzone", 10))
-            grabber.auto_exposure_min_us = float(self._config.get("auto_exposure_min_ms", 1.0)) * 1000.0
-            grabber.auto_exposure_max_us = float(self._config.get("auto_exposure_max_ms", 50.0)) * 1000.0
-            grabber.auto_exposure_max_gain = float(self._config.get("auto_exposure_max_gain", 12.0))
-            logger.info("Auto-Exposure aus Config aktiviert.")
+            grabber.auto_exposure_target = int(self._setting("auto_exposure_target", 130))
+            grabber.auto_exposure_deadzone = int(cfg.get("auto_exposure_deadzone", 10))
+            grabber.auto_exposure_min_us = float(cfg.get("auto_exposure_min_ms", 1.0)) * 1000.0
+            grabber.auto_exposure_max_us = float(cfg.get("auto_exposure_max_ms", 50.0)) * 1000.0
+            grabber.auto_exposure_max_gain = float(cfg.get("auto_exposure_max_gain", 12.0))
+            logger.info(f"[{self.cam_name}] Auto-Exposure aus Config aktiviert.")
 
     def _on_stream_connected(self):
-        """Callback im Main-Thread: Stream erfolgreich verbunden."""
+        """Callback im Main-Thread: Stream erfolgreich verbunden → TCP-Port öffnen."""
         self.loading_bar.stop()
         self.loading_bar.grid_remove()
+        self._connecting = False
         self.stream_running = True
         self._stopping = False
+        self.active_serial = self.grabber.serial
+        self._store(selected_camera_serial=self.grabber.serial, stream_active=True)
         self.start_btn.configure(state="normal", text="■  Stop Stream",
                                  fg_color=DANGER, hover_color="#B91C1C")
         self.scan_btn.configure(state="normal")
         self.train_capture_btn.configure(state="normal")
         self._set_status("● LIVE", SUCCESS)
+        self._start_tcp_server()
 
         self._display_thread = threading.Thread(target=self._display_loop, daemon=True)
         self._display_thread.start()
 
     def _on_stream_failed(self):
         """Callback im Main-Thread: Stream-Verbindung fehlgeschlagen."""
-        self.loading_bar.stop()
-        self.loading_bar.grid_remove()
-        self.start_btn.configure(state="normal", text="▶  Start Stream",
-                                 fg_color=ACCENT, hover_color="#1D4ED8")
+        self._reset_start_button()
         self._set_status("Stream Verbindung fehlgeschlagen!", DANGER)
 
     def _on_stream_error(self, msg):
         """Callback im Main-Thread: Allgemeiner Fehler beim Start."""
+        self._reset_start_button()
+        self._set_status(f"Fehler: {msg}", DANGER)
+
+    def _reset_start_button(self):
         self.loading_bar.stop()
         self.loading_bar.grid_remove()
+        self._connecting = False
+        self.active_serial = None
         self.start_btn.configure(state="normal", text="▶  Start Stream",
                                  fg_color=ACCENT, hover_color="#1D4ED8")
-        self._set_status(f"Fehler: {msg}", DANGER)
 
     def _stop_stream(self):
         # Guard gegen doppelten Aufruf
@@ -1131,6 +986,7 @@ class AIVisionApp(ctk.CTk):
             return
         self._stopping = True
         self.stream_running = False
+        self._stop_tcp_server()
         # Lade-Animation sicher beenden
         try:
             self.loading_bar.stop()
@@ -1140,6 +996,7 @@ class AIVisionApp(ctk.CTk):
         if self.grabber:
             self.grabber.stop()
             self.grabber = None
+        self.active_serial = None
         self.start_btn.configure(
             state="normal", text="▶  Start Stream",
             fg_color=ACCENT, hover_color="#1D4ED8"
@@ -1147,6 +1004,176 @@ class AIVisionApp(ctk.CTk):
         self.scan_btn.configure(state="disabled")
         self.train_capture_btn.configure(state="disabled")
         self._set_status("● Gestoppt", TXT_LIGHT)
+
+    def shutdown(self):
+        """Programmende: Stream und TCP-Port schließen, Session-Statistik speichern (Autostart-Merker bleibt)."""
+        self._closed = True
+        if self.scan_logger is not None:
+            self.scan_logger.save_session_summary()
+            stats = self.scan_logger.get_session_stats()
+            logger.info(
+                f"[{self.cam_name}] Session beendet: {stats['total_scans']} Scans, "
+                f"Erfolg: {stats.get('success_rate', 0):.1%}"
+            )
+        self._stop_stream()
+
+    # ------------------------------------------------------------------ #
+    #  TCP Server (läuft, solange der Stream läuft)                        #
+    # ------------------------------------------------------------------ #
+    def _start_tcp_server(self):
+        """Öffnet den TCP-Port dieser Kamera für externe Netzwerk-Trigger (z. B. '+')."""
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            server.bind(('0.0.0.0', self.tcp_port))
+            server.listen(5)
+        except OSError as e:
+            server.close()
+            logger.error(f"[{self.cam_name}] TCP-Server Start-Fehler auf Port {self.tcp_port}: {e}")
+            self._set_tcp_state("FEHLER", DANGER)
+            return
+        server.settimeout(1.0)  # accept() prüft regelmäßig, ob der Stream gestoppt wurde
+        self._tcp_server = server
+        self._tcp_stop = threading.Event()
+        threading.Thread(target=self._serve_tcp, args=(server, self._tcp_stop), daemon=True).start()
+        logger.info(f"[{self.cam_name}] TCP-Server lauscht auf Port {self.tcp_port}")
+        self._set_tcp_state("AKTIV", SUCCESS)
+
+    def _stop_tcp_server(self):
+        if self._tcp_stop is not None:
+            self._tcp_stop.set()
+            self._tcp_stop = None
+        if self._tcp_server is not None:
+            try:
+                self._tcp_server.close()
+            except OSError:
+                pass
+            self._tcp_server = None
+            logger.info(f"[{self.cam_name}] TCP-Port {self.tcp_port} geschlossen.")
+        self._set_tcp_state("AUS", TXT_LIGHT)
+
+    def _set_tcp_state(self, state: str, color: str):
+        self.tcp_info_label.configure(text=f"TCP Port {self.tcp_port}: {state}", text_color=color)
+
+    def _serve_tcp(self, server: socket.socket, stop: threading.Event):
+        while not stop.is_set():
+            try:
+                conn, addr = server.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                break  # Socket wurde beim Stoppen geschlossen
+            self._handle_tcp_client(conn, addr, stop)
+        try:
+            server.close()
+        except OSError:
+            pass
+
+    def _handle_tcp_client(self, conn: socket.socket, addr, stop: threading.Event):
+        conn.settimeout(1.0)
+        logger.info(f"[{self.cam_name}] TCP-Client verbunden: {addr}")
+        try:
+            while not stop.is_set():
+                try:
+                    data = conn.recv(1024)
+                except socket.timeout:
+                    continue
+                if not data:
+                    break
+                if b"+" in data:
+                    with self._tcp_scan_lock:
+                        self._tcp_scan_token += 1
+                        my_token = self._tcp_scan_token
+                    logger.info(f"[{self.cam_name}] Trigger '+' (Token {my_token}) empfangen. Starte Auswertung...")
+                    code = self._process_tcp_trigger_scan(token_id=my_token)
+                    if code is not None:
+                        response_bytes = b"\x02" + code.encode("utf-8") + b"\r\n\x04"
+                        conn.sendall(response_bytes)
+                    else:
+                        logger.info(f"[{self.cam_name}] Scan (Token {my_token}) wurde verworfen — keine Antwort gesendet.")
+                else:
+                    conn.sendall(b"\x02ERROR_UNKNOWN_COMMAND\r\n\x04")
+        except Exception as e_c:
+            logger.error(f"[{self.cam_name}] TCP-Kommunikationsfehler: {e_c}")
+        finally:
+            conn.close()
+
+    def _process_tcp_trigger_scan(self, token_id: int = 0) -> str | None:
+        """Wird aufgerufen wenn per TCP ein Trigger '+' empfangen wird."""
+        cancellation_check = lambda: (token_id > 0 and self._tcp_scan_token != token_id)
+
+        # Nur ein aktuelles Kamerabild: während eines Reconnects kein veraltetes Bild auswerten
+        grabber = self.grabber
+        scan_snapshot = grabber.get_frame() if grabber is not None else None
+        if scan_snapshot is None:
+            logger.error(f"[{self.cam_name}] TCP: Kein Kamerabild verfügbar!")
+            return "ERROR_NO_FRAME"
+
+        start_time = time.time()
+        yolo_detections, use_2class, detection_conf, detection_box, scan_frame = \
+            self.app.detect_labels(scan_snapshot, self.cam_name)
+
+        # Abbrechen & Verwerfen falls in der Zwischenzeit ein neuer Trigger empfangen wurde
+        if cancellation_check():
+            logger.warning(f"[{self.cam_name}] Scan (Token {token_id}) VOR Auswertung abgebrochen & VERWORFEN!")
+            return None
+
+        if use_2class:
+            result = scanner.scan_2class(scan_snapshot, yolo_detections, cancellation_check=cancellation_check)
+        else:
+            result = scanner.scan(scan_frame, cancellation_check=cancellation_check)
+
+        # Abbrechen & Verwerfen falls während der Auswertung ein neuer Trigger empfangen wurde
+        if cancellation_check() or result.get("cancelled"):
+            logger.warning(f"[{self.cam_name}] Scan (Token {token_id}) NACH Auswertung VERWORFEN (neuer Trigger).")
+            return None
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        result["duration_ms"] = duration_ms
+        logger.info(f"[{self.cam_name}] TCP-Scan fertig ({duration_ms}ms): {result}")
+
+        # Logging (nur für gültige, nicht stornierte Scans)
+        self._log_scan(result, scan_snapshot, grabber, detection_conf, detection_box, use_2class, scan_frame,
+                       trigger="TCP")
+
+        # Update GUI live in main thread
+        self.after(0, self._update_result, result)
+
+        if result["success"]:
+            return result["result"]
+        else:
+            return "ERROR"
+
+    def _log_scan(self, result: dict, snapshot: np.ndarray, grabber: IDSFrameGrabber | None,
+                  detection_conf: float, detection_box, use_2class: bool, scan_frame: np.ndarray, trigger: str):
+        """Scan-Logging (JSONL + Bild) im Log-Unterordner dieser Kamera."""
+        if self.scan_logger is None:
+            return
+        duration_ms = result["duration_ms"]
+        cfg = self.app.config_data
+        exp_us = getattr(grabber, 'exposure_us', float(cfg.get("last_exposure", 20.0)) * 1000.0)
+        gain_val = getattr(grabber, 'gain', float(cfg.get("last_gain", 1.0)))
+        self.scan_logger.log_scan(
+            scan_result=result,
+            frame=snapshot,
+            timing={"total_ms": duration_ms, "yolo_ms": 0, "scan_ms": duration_ms},
+            detection_info={
+                "yolo_conf": detection_conf,
+                "crop_size": [scan_frame.shape[1], scan_frame.shape[0]] if detection_box else None,
+                "label_detected": (use_2class or detection_box is not None),
+            },
+            meta={
+                "camera_model": grabber.model_name if grabber else "",
+                "camera_serial": grabber.serial if grabber else "",
+                "exposure_us": exp_us,
+                "gain": gain_val,
+                "app_version": APP_VERSION,
+                "cam_id": self.cam_id,
+                "port": self.tcp_port,
+                "trigger": trigger,
+                "auto_exposure": getattr(grabber, 'auto_exposure_enabled', False) if grabber else False
+            },
+        )
 
     def _draw_detections(self, frame, detections):
         """Zeichnet Bounding Boxes auf das Frame (W5)."""
@@ -1166,9 +1193,9 @@ class AIVisionApp(ctk.CTk):
                 cls_name = detections.names.get(cls_id, f"Klasse_{cls_id}")
                 
                 # Farbkodierung: Grün (BGR: 50, 205, 50) für DataMatrix (Klasse 0), Orange (BGR: 0, 165, 255) für Text (Klasse 1), Blau für 1-Klassen/Sonstiges
-                if self._is_2class and cls_id == 0:
+                if self.app.is_2class and cls_id == 0:
                     color_bgr = (50, 205, 50)  # Lime Green for DataMatrix
-                elif self._is_2class and cls_id == 1:
+                elif self.app.is_2class and cls_id == 1:
                     color_bgr = (0, 165, 255)  # Orange for Text
                 else:
                     color_bgr = (235, 99, 37)  # ACCENT Blue
@@ -1217,7 +1244,7 @@ class AIVisionApp(ctk.CTk):
 
                 if is_disconnected:
                     if not _reconnect_logged:
-                        logger.warning("Kamera: Verbindung verloren oder kein Frame. Starte Auto-Reconnect...")
+                        logger.warning(f"[{self.cam_name}] Kamera: Verbindung verloren oder kein Frame. Starte Auto-Reconnect...")
                         self.after(0, lambda: self._set_status("Kamera getrennt. Wiederverbindung...", WARN))
                         _reconnect_logged = True
                     
@@ -1230,27 +1257,21 @@ class AIVisionApp(ctk.CTk):
                         self.grabber = None
                     
                     reconnect_attempts += 1
-                    logger.info(f"Kamera Reconnect-Versuch {reconnect_attempts}/{max_reconnect_attempts}...")
+                    logger.info(f"[{self.cam_name}] Kamera Reconnect-Versuch {reconnect_attempts}/{max_reconnect_attempts}...")
                     
-                    new_grabber = IDSFrameGrabber()
-                    selected_serial = self._config.get("selected_camera_serial")
-                    if new_grabber.start(target_serial=selected_serial):
+                    new_grabber = self._open_camera(self.saved_serial)
+                    if new_grabber is not None:
+                        if not self.stream_running:  # während des Verbindens gestoppt
+                            new_grabber.stop()
+                            break
                         self.grabber = new_grabber
-                        self._configure_grabber(new_grabber)
-                        logger.info("Kamera: Auto-Reconnect erfolgreich!")
+                        logger.info(f"[{self.cam_name}] Kamera: Auto-Reconnect erfolgreich!")
                         self.after(0, lambda: self._set_status("● LIVE (wiederverbunden)", SUCCESS))
                         _reconnect_logged = False
                         reconnect_attempts = 0
                     else:
-                        # Neuen Grabber sauber stoppen bei Fehlschlag
-                        try:
-                            new_grabber.stop()
-                        except Exception:
-                            pass
-                        self.grabber = None
-                        
                         if reconnect_attempts >= max_reconnect_attempts:
-                            logger.error("Kamera: Maximale Reconnect-Versuche erreicht. Beende Stream.")
+                            logger.error(f"[{self.cam_name}] Kamera: Maximale Reconnect-Versuche erreicht. Beende Stream.")
                             self.after(0, lambda: self._set_status("Verbindung verloren!", DANGER))
                             break
                         
@@ -1259,28 +1280,31 @@ class AIVisionApp(ctk.CTk):
                 else:
                     _reconnect_logged = False
 
-                frame = self.grabber.get_frame() if self.grabber else None
+                grabber = self.grabber
+                frame = grabber.get_frame() if grabber else None
                 if frame is None:
                     time.sleep(0.01)
                     continue
 
-                self._last_frame = frame.copy()
-
-                display_frame = self._crop_to_roi(frame)
+                self._last_frame = frame
+                if not self.visible and not self.auto_scan_enabled:
+                    time.sleep(0.1)  # Verdeckter Reiter ohne Auto-Scan: nur Frame aktuell halten
+                    continue
 
                 # YOLO Inferenz: max 2x pro Sekunde (Throttling)
-                # Thread-Sperre verhindert gleichzeitige Nutzung durch Scan-Thread (W4)
+                # Thread-Sperre verhindert gleichzeitige Nutzung durch Scans und andere Reiter (W4)
                 now = time.time()
-                if self.model is not None and (now - self._last_infer_time) >= 0.5:
+                model = self.app.model
+                if model is not None and (now - self._last_infer_time) >= 0.5:
                     self._last_infer_time = now
-                    with self._model_lock:
-                        results = self.model.predict(display_frame, conf=yolo_detector.PREDICT_CONF, verbose=False)
+                    with self.app.model_lock:
+                        results = model.predict(frame, conf=yolo_detector.PREDICT_CONF, verbose=False)
                         self._last_detections = results[0]
 
                 # --- Smart Auto-Scan (Präsenzerkennung: DataMatrix ODER Text erkannt) ---
                 if self.auto_scan_enabled and not self._scan_running:
                     has_presence = False
-                    with self._model_lock:
+                    with self.app.model_lock:
                         if self._last_detections is not None and hasattr(self._last_detections, 'boxes'):
                             has_presence = yolo_detector.has_label_presence(self._last_detections.boxes)
                     
@@ -1290,21 +1314,26 @@ class AIVisionApp(ctk.CTk):
                             self._presence_counter += 1
                             if self._presence_counter >= 2:  # 2 aufeinanderfolgende Frames stabil
                                 self._presence_state = "SCANNED"
-                                logger.info("Auto-Scan getriggert (DataMatrix oder Text erkannt)!")
+                                logger.info(f"[{self.cam_name}] Auto-Scan getriggert (DataMatrix oder Text erkannt)!")
                                 self.after(0, self.trigger_scan)
                     else:
                         self._presence_counter = 0
                         self._absence_counter += 1
                         if self._absence_counter >= 3:  # 3 leere Frames -> wieder bereit für nächste Horde
                             self._presence_state = "EMPTY"
+
+                if not self.visible:
+                    time.sleep(0.1)
+                    continue
                 
                 # Synchronisierte Kopie der Detektionen zum Zeichnen holen (W4)
                 detections_to_draw = None
-                with self._model_lock:
+                with self.app.model_lock:
                     if self._last_detections is not None:
                         detections_to_draw = self._last_detections
                 
                 # Detections direkt auf das aktuelle Frame zeichnen, verhindert Springen (W5)
+                display_frame = frame
                 if detections_to_draw is not None:
                     display_frame = self._draw_detections(display_frame, detections_to_draw)
 
@@ -1316,8 +1345,6 @@ class AIVisionApp(ctk.CTk):
                     h, w = img_rgb.shape[:2]
                     scale = min(cw / w, ch / h)
                     nw, nh = int(w * scale), int(h * scale)
-                    self._display_scale = scale
-                    self._display_offset = ((cw - nw) // 2, (ch - nh) // 2)
 
                     img_pil = Image.fromarray(img_rgb).resize((nw, nh), Image.Resampling.BILINEAR)
                     photo = ImageTk.PhotoImage(image=img_pil)
@@ -1328,18 +1355,18 @@ class AIVisionApp(ctk.CTk):
                 curr = time.time()
                 fps = 1.0 / max(curr - prev_time, 1e-6)
                 prev_time = curr
-                self.after(0, self.fps_label.configure, {"text": f"FPS: {fps:.1f}"})
+                self.after(0, lambda t=f"FPS: {fps:.1f}": self.fps_label.configure(text=t))
 
                 # --- Auto-Exposure Helligkeits-Anzeige aktualisieren ---
-                if self.grabber and getattr(self.grabber, 'auto_exposure_enabled', False):
-                    brightness = getattr(self.grabber, '_current_brightness', 0)
-                    exp_ms = getattr(self.grabber, 'exposure_us', 0) / 1000.0
-                    gain_now = getattr(self.grabber, 'gain', 1.0)
-                    self.after(0, self.brightness_live_label.configure,
-                              {"text": f"\u2600 Live: {brightness}/255 | {exp_ms:.1f}ms | G{gain_now:.1f}"})
+                if grabber and getattr(grabber, 'auto_exposure_enabled', False):
+                    brightness = getattr(grabber, '_current_brightness', 0)
+                    exp_ms = getattr(grabber, 'exposure_us', 0) / 1000.0
+                    gain_now = getattr(grabber, 'gain', 1.0)
+                    live_text = f"\u2600 Live: {brightness}/255 | {exp_ms:.1f}ms | G{gain_now:.1f}"
+                    self.after(0, lambda t=live_text: self.brightness_live_label.configure(text=t))
 
             except Exception as e:
-                logger.error(f"Display-Loop Fehler: {e}")
+                logger.error(f"[{self.cam_name}] Display-Loop Fehler: {e}")
                 time.sleep(0.1)
 
         # Nur _stop_stream aufrufen, wenn wir nicht bereits beim Stoppen sind
@@ -1364,18 +1391,6 @@ class AIVisionApp(ctk.CTk):
     # ------------------------------------------------------------------ #
     #  Scan Trigger                                                        #
     # ------------------------------------------------------------------ #
-    def _crop_to_roi(self, frame: np.ndarray) -> np.ndarray:
-        """Schneidet das Frame auf den gesetzten ROI zu (auf die Bildgrenzen begrenzt)."""
-        if self._roi is None:
-            return frame
-        rx0, ry0, rx1, ry1 = self._roi
-        fh, fw = frame.shape[:2]
-        rx0 = max(0, min(rx0, fw - 1))
-        ry0 = max(0, min(ry0, fh - 1))
-        rx1 = max(rx0 + 1, min(rx1, fw))
-        ry1 = max(ry0 + 1, min(ry1, fh))
-        return frame[ry0:ry1, rx0:rx1]
-
     def trigger_scan(self):
         if self._scan_running:
             return
@@ -1392,22 +1407,17 @@ class AIVisionApp(ctk.CTk):
         self.loading_bar.grid()
         self.loading_bar.start()
 
-        # Wenn ein ROI gesetzt ist, nur diesen Bereich scannen
-        frame = self._crop_to_roi(self._last_frame.copy())
-        if self._roi is not None:
-            logger.info(f"Scanne ROI-Ausschnitt: {frame.shape[1]}x{frame.shape[0]} Pixel")
+        # Frame-Snapshot einfrieren: Wir verwenden das Frame, das zum Zeitpunkt des Scans aktuell war,
+        # nicht self._last_frame (das sich im Hintergrund ständig ändert).
+        threading.Thread(target=self._run_scan, args=(self._last_frame.copy(),), daemon=True).start()
 
-        threading.Thread(target=self._run_scan, args=(frame,), daemon=True).start()
-
-    def _run_scan(self, frame):
-        logger.info("Scan gestartet...")
+    def _run_scan(self, scan_snapshot):
+        logger.info(f"[{self.cam_name}] Scan gestartet...")
         start_time = time.time()
+        grabber = self.grabber
 
-        # Frame-Snapshot einfrieren: Wir verwenden das Frame, das zum
-        # Zeitpunkt des Scans aktuell war, nicht self._last_frame
-        # (das sich im Hintergrund ständig ändert).
-        scan_snapshot = frame.copy()
-        yolo_detections, use_2class, detection_conf, detection_box, scan_frame = self._detect_labels(scan_snapshot)
+        yolo_detections, use_2class, detection_conf, detection_box, scan_frame = \
+            self.app.detect_labels(scan_snapshot, self.cam_name)
 
         if use_2class:
             result = scanner.scan_2class(scan_snapshot, yolo_detections)
@@ -1415,38 +1425,11 @@ class AIVisionApp(ctk.CTk):
             result = scanner.scan(scan_frame)
         duration_ms = int((time.time() - start_time) * 1000)
         result["duration_ms"] = duration_ms
-        logger.info(f"Scan Ergebnis: {result} (Dauer: {duration_ms}ms)")
+        logger.info(f"[{self.cam_name}] Scan Ergebnis: {result} (Dauer: {duration_ms}ms)")
 
         # --- Scan-Logging (JSONL + Bild) ---
-        if self.scan_logger is not None:
-            timing_info = {
-                "total_ms": duration_ms,
-                "yolo_ms": 0,
-                "scan_ms": duration_ms,
-            }
-            detection_info = {
-                "yolo_conf": detection_conf,
-                "crop_size": [scan_frame.shape[1], scan_frame.shape[0]] if detection_box else None,
-                "label_detected": detection_box is not None,
-            }
-            exp_val = getattr(self.grabber, 'exposure_us', 6000.0) / 1000.0 if self.grabber else 6.0
-            gain_val = getattr(self.grabber, 'gain', 1.0) if self.grabber else 1.0
-
-            meta_info = {
-                "camera_model": self.grabber.model_name if self.grabber else "",
-                "camera_serial": self.grabber.serial if self.grabber else "",
-                "exposure_us": exp_val * 1000.0,
-                "gain": gain_val,
-                "app_version": APP_VERSION,
-                "auto_exposure": getattr(self.grabber, 'auto_exposure_enabled', False) if self.grabber else False
-            }
-            self.scan_logger.log_scan(
-                scan_result=result,
-                frame=scan_snapshot,
-                timing=timing_info,
-                detection_info=detection_info,
-                meta=meta_info,
-            )
+        self._log_scan(result, scan_snapshot, grabber, detection_conf, detection_box, use_2class, scan_frame,
+                       trigger="GUI")
 
         # --- Horden-Datenbank Bildspeicherung (mit Späterkennungs-Schutz) ---
         if result.get("success") and result.get("result"):
@@ -1464,46 +1447,10 @@ class AIVisionApp(ctk.CTk):
             self._scan_counter += 1
             # Speichere das volle Bild wenn KI unsicher war (Konfidenz 0.15-0.60)
             # ODER bei jedem 20. erfolgreichen Scan als allgemeine Datenmasse
-            should_save = (0.15 <= detection_conf <= 0.60) or (self._scan_counter % 20 == 0)
-
-            # Speicherplatz-Schutz: Maximal _auto_train_max Bilder speichern
-            if should_save and self._auto_train_count < self._auto_train_max:
-                self._auto_save_training(scan_snapshot, detection_box)
+            if (0.15 <= detection_conf <= 0.60) or (self._scan_counter % 20 == 0):
+                self.app.save_auto_training(scan_snapshot, detection_box)
 
         self.after(0, self._update_result, result)
-
-    def _auto_save_training(self, full_frame, box):
-        """Speichert das volle Bild + YOLO-Label automatisch für späteres Nachtraining."""
-        try:
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            img_name = f"auto_{timestamp}_{self._auto_train_count}.jpg"
-            lbl_name = f"auto_{timestamp}_{self._auto_train_count}.txt"
-            
-            img_path = os.path.join(self._auto_train_dir, "images", img_name)
-            lbl_path = os.path.join(self._auto_train_dir, "labels", lbl_name)
-            
-            # Bild speichern (volles Kamerabild!)
-            cv2.imwrite(img_path, full_frame)
-            
-            # YOLO-Label generieren (normierte Koordinaten: x_center, y_center, width, height)
-            fh, fw = full_frame.shape[:2]
-            x1, y1, x2, y2 = box
-            x_center = ((x1 + x2) / 2.0) / fw
-            y_center = ((y1 + y2) / 2.0) / fh
-            w = (x2 - x1) / fw
-            h = (y2 - y1) / fh
-            
-            with open(lbl_path, "w") as f:
-                f.write(f"0 {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}\n")
-            
-            self._auto_train_count += 1
-            logger.info(f"Active Learning: Bild #{self._auto_train_count} gespeichert ({img_name})")
-            self.after(0, lambda: self.auto_train_label.configure(
-                text=f"Auto-Training: {self._auto_train_count} Bilder"
-            ))
-            
-        except Exception as e:
-            logger.error(f"Auto-Save Fehler: {e}")
 
     def _update_result(self, result: dict):
         success = result["success"]
@@ -1548,6 +1495,7 @@ class AIVisionApp(ctk.CTk):
             detail_parts.append(f"Dauer: {duration_ms}ms")
         detail_text = "  |  ".join(detail_parts) if detail_parts else ""
         self.detail_label.configure(text=detail_text)
+        self.auto_train_label.configure(text=f"Auto-Training: {self.app.auto_train_count} Bilder")
         
         self._scan_running = False
         self.scan_btn.configure(state="normal", text="◎  SCAN")
@@ -1558,19 +1506,16 @@ class AIVisionApp(ctk.CTk):
             pass
 
     def capture_training_image(self):
-        """Speichert das aktuelle (ggf. gezoomte) Frame für das KI-Training."""
+        """Speichert das aktuelle Frame für das KI-Training."""
         if self._last_frame is None:
             self._set_status("Kein Bild zum Speichern!", WARN)
             return
             
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         filename = f"train_data_{timestamp}.jpg"
-        filepath = os.path.join(self.training_dir, filename)
-        
-        # Gezoomtes Frame verwenden, falls ROI aktiv ist
-        frame_to_save = self._crop_to_roi(self._last_frame.copy())
+        filepath = os.path.join(TRAINING_DIR, filename)
 
-        cv2.imwrite(filepath, frame_to_save)
+        cv2.imwrite(filepath, self._last_frame)
         self._set_status(f"Gespeichert: {filename}", SUCCESS)
         logger.info(f"Training image saved: {filepath}")
 
@@ -1580,21 +1525,232 @@ class AIVisionApp(ctk.CTk):
     def _set_status(self, text: str, color: str):
         self.status_label.configure(text=text, text_color=color)
 
+
+class DataMatrixReaderApp(ctk.CTk):
+    """Hauptfenster: ein Reiter pro Kamera; alle Kameras teilen sich ein YOLO-Modell."""
+
+    def __init__(self):
+        super().__init__()
+        self.title(f"DataMatrixReader  —  DataDetector v{APP_VERSION}")
+        self.geometry("1280x800")
+        self.minsize(900, 700)
+        self.configure(fg_color=BG_MAIN)
+
+        self.config_data = _load_config()
+        self.camera_ips = _configured_camera_ips(self.config_data)
+        self.log_base_dir = resolve_log_directory(self.config_data.get("log_dir", DEFAULT_LOG_DIR))
+
+        # --- YOLO-Modell (Thread-Sperre gegen gleichzeitige Nutzung durch Anzeige und Scans) ---
+        self.model = None
+        self.is_2class = False
+        self.model_lock = threading.Lock()
+        self._model_load_lock = threading.Lock()
+
+        os.makedirs(TRAINING_DIR, exist_ok=True)
+
+        # --- Active Learning State ---
+        os.makedirs(os.path.join(AUTO_TRAIN_DIR, "images"), exist_ok=True)
+        os.makedirs(os.path.join(AUTO_TRAIN_DIR, "labels"), exist_ok=True)
+        self.auto_train_count = len(os.listdir(os.path.join(AUTO_TRAIN_DIR, "images")))
+        self._auto_train_lock = threading.Lock()
+
+        self.panels: list[CameraPanel] = []
+        self._autostart_pending = True
+        self.tabview = ctk.CTkTabview(
+            self, fg_color=BG_MAIN, anchor="w",
+            segmented_button_selected_color=ACCENT, segmented_button_selected_hover_color="#1D4ED8",
+            segmented_button_font=ctk.CTkFont(size=13, weight="bold"),
+            command=self._on_tab_changed
+        )
+        self.tabview.pack(fill="both", expand=True, padx=12, pady=(4, 12))
+        for slot in self._camera_slots():
+            self._add_panel(slot)
+        self._on_tab_changed()
+
+        # --- Kameras beim Start im Hintergrund auflisten (danach Autostart) ---
+        self.after(200, self.refresh_cameras)
+
+    def _camera_slots(self) -> list[dict]:
+        """Kamera-Reiter aus config["cameras"] (mindestens zwei); die bisherige Einzelkamera gehört zu Kamera 1."""
+        slots = [c for c in self.config_data.get("cameras") or [] if isinstance(c, dict)]
+        while len(slots) < DEFAULT_CAMERA_SLOTS:
+            slots.append({})
+        for number, slot in enumerate(slots, start=1):
+            slot.setdefault("id", f"cam{number}")
+            slot.setdefault("name", f"Kamera {number}")
+        legacy_serial = self.config_data.get("selected_camera_serial")
+        if legacy_serial:
+            slots[0].setdefault("selected_camera_serial", legacy_serial)
+        self.config_data["cameras"] = slots
+        return slots
+
+    def _add_panel(self, slot: dict):
+        base_port = int(self.config_data.get("tcp_port", DEFAULT_TCP_PORT))
+        port = int(slot.get("port", base_port + len(self.panels)))
+        tab_name = f"{slot['name']}  ·  Port {port}"
+        tab = self.tabview.add(tab_name)
+        tab.grid_columnconfigure(0, weight=1)
+        tab.grid_rowconfigure(0, weight=1)
+        panel = CameraPanel(tab, self, slot, port, tab_name)
+        panel.grid(row=0, column=0, sticky="nsew")
+        self.panels.append(panel)
+
+    def _on_tab_changed(self):
+        current = self.tabview.get()
+        for panel in self.panels:
+            panel.visible = panel.tab_name == current
+
+    def save_config(self):
+        _save_config(self.config_data)
+
+    # ------------------------------------------------------------------ #
+    #  Kameras                                                             #
+    # ------------------------------------------------------------------ #
+    def refresh_cameras(self):
+        """Sucht nach verfügbaren IDS-Kameras und aktualisiert die Dropdown-Menüs aller Reiter."""
+        def _worker():
+            cameras = IDSFrameGrabber.list_cameras(self.camera_ips)
+            self.after(0, self._on_cameras_listed, cameras)
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_cameras_listed(self, cameras: list[dict]):
+        # Jede weitere angeschlossene Kamera bekommt einen eigenen Reiter (Kamera 3: Port 9502, ...)
+        if len(cameras) > len(self.panels):
+            for number in range(len(self.panels) + 1, len(cameras) + 1):
+                slot = {"id": f"cam{number}", "name": f"Kamera {number}"}
+                self.config_data["cameras"].append(slot)
+                self._add_panel(slot)
+            self.save_config()
+
+        taken = {panel.saved_serial for panel in self.panels if panel.saved_serial}
+        for panel in self.panels:
+            shown = panel.update_camera_list(cameras, taken)
+            if shown:
+                taken.add(shown)
+
+        if self._autostart_pending:
+            self._autostart_pending = False
+            for panel in self.panels:
+                if panel.autostart_requested:
+                    logger.info(f"[{panel.cam_name}] Autostart: Stream lief beim letzten Programmende.")
+                    panel.start_stream(autostart=True)
+
+    def panel_using_camera(self, serial: str, exclude: CameraPanel) -> CameraPanel | None:
+        return next((p for p in self.panels if p is not exclude and p.active_serial == serial), None)
+
+    # ------------------------------------------------------------------ #
+    #  YOLO-Modell und Active Learning (von allen Reitern genutzt)         #
+    # ------------------------------------------------------------------ #
+    def ensure_model(self):
+        """Lädt das YOLO-Modell beim ersten Stream-Start."""
+        with self._model_load_lock:
+            if self.model is None:
+                self.model, self.is_2class = yolo_detector.load_model()
+
+    def detect_labels(self, snapshot: np.ndarray, cam_name: str) -> tuple[list[dict], bool, float, tuple | None, np.ndarray]:
+        """
+        YOLO-Detektion vor dem Scan (Thread-Sperre gegen gleichzeitige Nutzung durch Anzeige und andere Kameras).
+
+        Returns:
+            (Detektionen mit conf > 0.3, 2-Klassen-Modus, beste Konfidenz,
+             Etikett-Box im 1-Klassen-Modus, zu scannendes Bild)
+        """
+        if self.model is None:
+            return [], False, 0.0, None, snapshot
+        with self.model_lock:
+            results = self.model.predict(snapshot, conf=yolo_detector.PREDICT_CONF, verbose=False)
+        detections = yolo_detector.extract_detections(results[0], min_conf=0.3) if results else []
+
+        detected_classes = {d["cls"] for d in detections}
+        if self.is_2class and (0 in detected_classes or 1 in detected_classes):
+            detection_conf = max(d["conf"] for d in detections)
+            logger.info(f"[{cam_name}] 2-Klassen-Modus: {len(detections)} Detections (Klassen: {detected_classes}, "
+                        f"max Conf: {detection_conf:.2f})")
+            return detections, True, detection_conf, None, snapshot
+        if detections:
+            best_det = max(detections, key=lambda d: d["conf"])
+            scan_frame = scanner.deskew_crop(snapshot, best_det["box"], padding=60)
+            logger.info(f"[{cam_name}] 1-Klassen KI Etikett gefunden! Konfidenz: {best_det['conf']:.2f}. "
+                        f"Ausschneiden und Begradigen auf {scan_frame.shape[1]}x{scan_frame.shape[0]}.")
+            return detections, False, best_det["conf"], best_det["box"], scan_frame
+        logger.warning(f"[{cam_name}] KI hat kein Etikett gefunden, scanne gesamtes Bild.")
+        return detections, False, 0.0, None, snapshot
+
+    def save_auto_training(self, full_frame, box):
+        """Speichert das volle Bild + YOLO-Label automatisch für späteres Nachtraining."""
+        with self._auto_train_lock:
+            if self.auto_train_count >= AUTO_TRAIN_MAX:
+                return
+            try:
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                img_name = f"auto_{timestamp}_{self.auto_train_count}.jpg"
+                lbl_name = f"auto_{timestamp}_{self.auto_train_count}.txt"
+
+                img_path = os.path.join(AUTO_TRAIN_DIR, "images", img_name)
+                lbl_path = os.path.join(AUTO_TRAIN_DIR, "labels", lbl_name)
+
+                # Bild speichern (volles Kamerabild!)
+                cv2.imwrite(img_path, full_frame)
+
+                # YOLO-Label generieren (normierte Koordinaten: x_center, y_center, width, height)
+                fh, fw = full_frame.shape[:2]
+                x1, y1, x2, y2 = box
+                x_center = ((x1 + x2) / 2.0) / fw
+                y_center = ((y1 + y2) / 2.0) / fh
+                w = (x2 - x1) / fw
+                h = (y2 - y1) / fh
+
+                with open(lbl_path, "w") as f:
+                    f.write(f"0 {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}\n")
+
+                self.auto_train_count += 1
+                logger.info(f"Active Learning: Bild #{self.auto_train_count} gespeichert ({img_name})")
+            except Exception as e:
+                logger.error(f"Auto-Save Fehler: {e}")
+
     def on_closing(self):
-        self._tcp_running = False
-        # Session-Statistiken speichern
-        if hasattr(self, 'scan_logger') and self.scan_logger is not None:
-            self.scan_logger.save_session_summary()
-            stats = self.scan_logger.get_session_stats()
-            logger.info(
-                f"Session beendet: {stats['total_scans']} Scans, "
-                f"Erfolg: {stats.get('success_rate', 0):.1%}"
-            )
-        self._stop_stream()
+        for panel in self.panels:
+            panel.shutdown()
         self.destroy()
 
 
-if __name__ == "__main__":
-    app = AIVisionApp()
+def _already_running() -> bool:
+    """Nur eine Instanz: Kameras und TCP-Ports lassen sich nicht von zwei Programmen gleichzeitig nutzen."""
+    global _instance_mutex
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    _instance_mutex = kernel32.CreateMutexW(None, False, SINGLE_INSTANCE_MUTEX)
+    return ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
+
+
+def main():
+    if _already_running():
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showinfo("DataMatrixReader", "Der DataMatrixReader läuft bereits.")
+        root.destroy()
+        return
+
+    if IDS_AVAILABLE:
+        try:
+            ids_peak.Library.Initialize()
+        except Exception as e:
+            logger.error(f"IDS peak Initialisierung fehlgeschlagen: {e}")
+
+    app = DataMatrixReaderApp()
     app.protocol("WM_DELETE_WINDOW", app.on_closing)
     app.mainloop()
+
+    if IDS_AVAILABLE:
+        try:
+            ids_peak.Library.Close()
+        except Exception:
+            pass
+    logger.info("========== APP ENDE ==========")
+
+
+if __name__ == "__main__":
+    main()
+    logging.shutdown()
+    # Hintergrund-Threads (Kamera, Torch) nicht abwarten: Exit-Code 0 heißt für den Watchdog „bewusst beendet"
+    os._exit(0)

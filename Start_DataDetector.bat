@@ -1,31 +1,14 @@
 @echo off
-title DataDetector - Watchdog [24/7]
+:: Startet das DataDetector-Startfenster (DataMatrixReader, Benchmark, Log Analyzer) ohne Konsolenfenster.
 cd /d "%~dp0"
 
-:: ============================================================
-::  WATCHDOG: Startet die App automatisch neu nach jedem Crash
-:: ============================================================
-
-:WATCHDOG_LOOP
-echo.
-echo ============================================================
-echo  DataDetector Watchdog - %date% %time%
-echo  Starte App... (Dieses Fenster schliessen = App beenden)
-echo ============================================================
-echo.
-
-:: Virtuelle Umgebung aktivieren
-if exist ".venv\Scripts\activate.bat" (
-    call ".venv\Scripts\activate.bat"
+if not exist ".venv\Scripts\python.exe" (
+    echo [FEHLER] Die Python-Umgebung .venv wurde nicht gefunden.
+    echo Bitte zuerst setup.bat ausfuehren.
+    echo.
+    pause
+    exit /b 1
 )
 
-:: App starten
-python vision_app.py
-
-:: Wenn wir hier ankommen, ist die App gestorben
-echo.
-echo [WATCHDOG] App beendet (Exit Code: %errorlevel%). Neustart in 2 Sekunden...
-timeout /t 2 /nobreak >nul
-
-:: Zurueck zum Start
-goto WATCHDOG_LOOP
+:: Ohne Konsolenfenster starten (pythonw.exe einer uv-.venv ist selbst ein Konsolenprogramm)
+".venv\Scripts\python.exe" -c "import subprocess, sys; subprocess.Popen([sys.executable, 'launcher.py'], creationflags=subprocess.CREATE_NO_WINDOW)"

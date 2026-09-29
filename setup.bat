@@ -112,11 +112,8 @@ if errorlevel 1 (
 echo.
 echo [4/4] Setup erfolgreich abgeschlossen.
 echo.
-echo Programme starten mit:
-echo   Start_DataDetector.bat              Kamera-App
-echo   Start_DataDetector_v4_Network.bat   Multi-Kamera TCP-Server
-echo   Start_Benchmark.bat                 Benchmark und Ground-Truth
-echo   Start_LogAnalyzer.bat               Log-Auswertung
+echo Programm starten mit Start_DataDetector.bat
+echo   Startfenster fuer DataMatrixReader, Benchmark und Log Analyzer
 echo.
 pause
 
