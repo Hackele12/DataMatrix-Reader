@@ -9,14 +9,12 @@ Helles, modernes Industriedesign analog zum AI Vision Core.
 import csv
 import json
 import os
-import sys
 import threading
 import time
-import tkinter as tk
 from tkinter import filedialog, messagebox
 from datetime import datetime
 import customtkinter as ctk
-from PIL import Image, ImageTk
+from PIL import Image
 
 # Matplotlib in Tkinter einbetten
 import matplotlib

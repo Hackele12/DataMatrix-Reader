@@ -31,9 +31,21 @@ def get_horde_db_dir() -> str:
     return db_dir
 
 
+def _describe(gray: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
+    """Normierte 320x320-Graustufenvorlage und ORB-Deskriptoren für den Bildabgleich."""
+    resized = cv2.resize(gray, (320, 320), interpolation=cv2.INTER_AREA)
+    _, des = cv2.ORB_create(nfeatures=400).detectAndCompute(resized, None)
+    return resized, des
+
+
+def _cache_entry(path: str, gray: np.ndarray, mtime: float) -> dict:
+    resized, des = _describe(gray)
+    return {"path": path, "gray": resized, "orb_des": des, "mtime": mtime}
+
+
 def load_horde_db(force_reload: bool = False):
     """
-    Lädt alle gespeicherten Hordenbilder aus horden_db/ in den In-Memory-Cache.
+    Lädt alle gespeicherten Hordenbilder aus hard_scans_cache/ in den In-Memory-Cache.
     Berechnet ORB-Deskriptoren vorab für blitzschnellen visuellen Bildabgleich.
     """
     global _cache_initialized, _horde_cache
@@ -43,7 +55,6 @@ def load_horde_db(force_reload: bool = False):
 
         db_dir = get_horde_db_dir()
         t0 = time.time()
-        orb = cv2.ORB_create(nfeatures=400)
         new_cache = {}
 
         valid_extensions = (".jpg", ".jpeg", ".png")
@@ -57,22 +68,10 @@ def load_horde_db(force_reload: bool = False):
                 continue
 
             fpath = os.path.join(db_dir, fname)
-            mtime = os.path.getmtime(fpath)
-
             img = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
             if img is None:
                 continue
-
-            # Standardisierte Zielgröße für Feature-Matching
-            resized = cv2.resize(img, (320, 320), interpolation=cv2.INTER_AREA)
-            kp, des = orb.detectAndCompute(resized, None)
-
-            new_cache[code] = {
-                "path": fpath,
-                "gray": resized,
-                "orb_des": des,
-                "mtime": mtime,
-            }
+            new_cache[code] = _cache_entry(fpath, img, os.path.getmtime(fpath))
 
         _horde_cache = new_cache
         _cache_initialized = True
@@ -87,7 +86,7 @@ def save_or_update_horde_image(
     confidence: float = 1.0
 ) -> str | None:
     """
-    Speichert oder aktualisiert das Hordenbild im Zusatzordner horden_db/<CODE>.jpg.
+    Speichert oder aktualisiert das Hordenbild im Zusatzordner hard_scans_cache/<CODE>.jpg.
     Garantiert, dass immer das aktuellste Bild der Horde in der Datenbank vorhanden ist.
     
     Args:
@@ -110,7 +109,7 @@ def save_or_update_horde_image(
 
     # --- ABSOLUTER SCHUTZ GEGEN DATENBANK-VERGIFTUNG ---
     # Nur 100% verifizierte DataMatrix-Scans (mit Reed-Solomon Fehlerkorrektur) oder exakte 1:1 DMX+OCR-Matches
-    # dürfen in horden_db/ gespeichert werden! Reine OCR-Ergebnisse (selbst mit hoher Konfidenz) werden NIEMALS gespeichert.
+    # dürfen in hard_scans_cache/ gespeichert werden! Reine OCR-Ergebnisse (selbst mit hoher Konfidenz) werden NIEMALS gespeichert.
     if not verified or confidence < 0.98:
         logger.warning(
             f"[HORDEN-DB] SPEICHERN ABGELEHNT: Hordenbild für '{code_clean}' ist nicht 100% verifiziert "
@@ -139,17 +138,7 @@ def save_or_update_horde_image(
 
             # In-Memory-Cache direkt aktualisieren
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame.copy()
-            resized = cv2.resize(gray, (320, 320), interpolation=cv2.INTER_AREA)
-
-            orb = cv2.ORB_create(nfeatures=400)
-            kp, des = orb.detectAndCompute(resized, None)
-
-            _horde_cache[code_clean] = {
-                "path": filepath,
-                "gray": resized,
-                "orb_des": des,
-                "mtime": mtime,
-            }
+            _horde_cache[code_clean] = _cache_entry(filepath, gray, mtime)
 
             action = "aktualisiert" if is_update else "neu angelegt"
             tag = " [SPÄTERKENNUNG >6s]" if is_late_scan else ""
@@ -163,7 +152,7 @@ def save_or_update_horde_image(
 
 def match_horde_image(frame: np.ndarray, min_confidence: float = 0.70) -> dict | None:
     """
-    Vergleicht ein aufgenommenes Kamerabild gegen alle in horden_db/ gespeicherten Horden-Bilder.
+    Vergleicht ein aufgenommenes Kamerabild gegen alle in hard_scans_cache/ gespeicherten Horden-Bilder.
     Kombiniert ORB-Feature-Matching (Lowe's Ratio Test) mit direkter Graustufen-Korrelation.
     
     Args:
@@ -188,10 +177,7 @@ def match_horde_image(frame: np.ndarray, min_confidence: float = 0.70) -> dict |
 
     # Pre-Processing des Eingabebildes
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame.copy()
-    resized = cv2.resize(gray, (320, 320), interpolation=cv2.INTER_AREA)
-
-    orb = cv2.ORB_create(nfeatures=400)
-    kp_input, des_input = orb.detectAndCompute(resized, None)
+    resized, des_input = _describe(gray)
 
     if des_input is None or len(des_input) < 10:
         return None

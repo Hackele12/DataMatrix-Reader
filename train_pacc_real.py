@@ -26,13 +26,12 @@ logger = logging.getLogger("PACCRealTraining")
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(PROJECT_DIR, "models")
 TRAIN_DATA_DIR = os.path.join(PROJECT_DIR, "training_data")
-SUMMARY_JSON = os.path.join(PROJECT_DIR, "benchmarks_split_results", "combined_batch_benchmark_summary.json")
 GT_JSON = os.path.join(PROJECT_DIR, "ground_truth.json")
 
 sys.path.insert(0, MODEL_DIR)
 sys.path.insert(0, PROJECT_DIR)
 
-from char_classifier import create_model, PREFIX_CLASSES
+from char_classifier import create_model
 from train_char_classifier import (
     generate_all_codes,
     _find_system_fonts,
@@ -46,35 +45,15 @@ from train_char_classifier import (
 )
 
 def load_real_gt_mappings() -> dict[str, str]:
-    """Lädt die Ground-Truth Zuordnung für alle 172 echten Bilder."""
-    gt_map = {}
-    
-    # 1. Aus combined_batch_benchmark_summary.json lesen
-    if os.path.exists(SUMMARY_JSON):
-        try:
-            with open(SUMMARY_JSON, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                for item in data.get("all_details", []):
-                    fn = item.get("filename")
-                    gt = item.get("expected_gt")
-                    if fn and gt and gt != "?":
-                        gt_map[fn] = gt
-            logger.info(f"Loaded {len(gt_map)} GT entries from summary json.")
-        except Exception as e:
-            logger.warning(f"Could not load summary json: {e}")
-
-    # 2. Aus ground_truth.json ergänzen
-    if os.path.exists(GT_JSON):
-        try:
-            with open(GT_JSON, "r", encoding="utf-8") as f:
-                gt_data = json.load(f)
-                for fn, gt in gt_data.items():
-                    if fn not in gt_map and gt != "?":
-                        gt_map[fn] = gt
-        except Exception as e:
-            logger.warning(f"Could not load ground_truth.json: {e}")
-
-    return gt_map
+    """Lädt die Ground-Truth-Zuordnung (Dateiname → Code) der echten Bilder aus ground_truth.json."""
+    if not os.path.exists(GT_JSON):
+        return {}
+    try:
+        with open(GT_JSON, "r", encoding="utf-8") as f:
+            return {fn: gt for fn, gt in json.load(f).items() if gt != "?"}
+    except Exception as e:
+        logger.warning(f"Could not load ground_truth.json: {e}")
+        return {}
 
 
 def extract_real_crops(gt_map: dict[str, str]) -> list[tuple[np.ndarray, str]]:
@@ -82,14 +61,9 @@ def extract_real_crops(gt_map: dict[str, str]) -> list[tuple[np.ndarray, str]]:
     real_crops = []
     
     try:
-        from ultralytics import YOLO
         import scanner
-        model_path = os.path.join(PROJECT_DIR, "runs", "detect", "training_runs_v2", "horde_2class", "weights", "best.pt")
-        if not os.path.exists(model_path):
-            model_path = os.path.join(PROJECT_DIR, "runs", "detect", "training_runs", "horde_model", "weights", "best.pt")
-        if not os.path.exists(model_path):
-            model_path = os.path.join(PROJECT_DIR, "yolov10n.pt")
-        yolo_model = YOLO(model_path) if os.path.exists(model_path) else None
+        import yolo_detector
+        yolo_model, _ = yolo_detector.load_model(PROJECT_DIR)
     except Exception as e:
         logger.warning(f"YOLO not available for crop extraction: {e}")
         yolo_model = None

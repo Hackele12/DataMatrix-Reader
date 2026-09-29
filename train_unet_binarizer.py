@@ -16,7 +16,6 @@ import sys
 import random
 import logging
 import argparse
-from pathlib import Path
 
 import cv2
 import numpy as np

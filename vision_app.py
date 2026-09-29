@@ -6,6 +6,7 @@ import logging
 import threading
 import time
 import socket
+import struct
 import tkinter as tk
 import customtkinter as ctk
 from PIL import Image, ImageTk
@@ -89,27 +90,16 @@ threading.excepthook = thread_crash_handler
 # --- Kritische Umgebungsvariablen VOR allen anderen Imports ---
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-# --- YOLO wird LAZY geladen (erst beim Stream-Start im Hintergrund-Thread) ---
-# Dadurch startet die GUI sofort, ohne auf PyTorch/YOLO zu warten.
-YOLO = None  # Wird in _start_stream_worker importiert
-
-# --- Scanner Modul laden ---
+# --- Scanner, Scan-Logger und Horden-DB laden (YOLO/ultralytics erst beim Stream-Start) ---
 try:
     import scanner
-    from scan_logger import ScanLogger, resolve_log_directory
     import horde_db
+    import yolo_detector
+    from scan_logger import ScanLogger
     logger.info("Scanner Modul geladen.")
 except Exception as e:
     logger.error(f"Scanner Importfehler: {e}")
     sys.exit(1)
-
-# --- Scan-Logger laden ---
-try:
-    from scan_logger import ScanLogger
-    logger.info("ScanLogger-Modul geladen.")
-except Exception as e:
-    logger.error(f"ScanLogger Importfehler: {e}")
-    ScanLogger = None
 
 # --- App-Version ---
 APP_VERSION = "21.0"
@@ -151,6 +141,43 @@ def _save_config(cfg: dict):
             json.dump(cfg, f, indent=4)
     except Exception as e:
         logger.error(f"Config speichern fehlgeschlagen: {e}")
+
+
+def _count(seq) -> int:
+    """Länge einer IDS-peak-Liste (Vektor mit size() oder Python-Sequenz)."""
+    return seq.size() if hasattr(seq, 'size') else len(seq)
+
+
+def _ip_to_int(ip: str) -> int:
+    """IPv4-Adresse als 32-Bit-Integer (GigE Vision Standard)."""
+    return struct.unpack("!I", socket.inet_aton(ip))[0]
+
+
+def _register_unicast_ip(dm, camera_ip: str) -> None:
+    """Registriert die Kamera-IP für die GigE-Unicast-Suche auf allen Netzwerk-Interfaces (ohne USB/WLAN)."""
+    ip_int = _ip_to_int(camera_ip)
+    systems = dm.Systems()
+    for sys_idx in range(_count(systems)):
+        system = systems[sys_idx]
+        sys_name = system.DisplayName()
+        if "U3V" in sys_name or "USB" in sys_name:
+            continue
+        interfaces = system.Interfaces()
+        for if_idx in range(_count(interfaces)):
+            iface_desc = interfaces[if_idx]
+            iface_name = iface_desc.DisplayName()
+            if "Wi-Fi" in iface_name:
+                continue
+            try:
+                nodemaps = iface_desc.OpenedInterface().NodeMaps()
+                if _count(nodemaps) > 0:
+                    nodemap = nodemaps[0]
+                    if nodemap.HasNode("GevDiscoveryUnicastIPAddressToAdd"):
+                        nodemap.FindNode("GevDiscoveryUnicastIPAddressToAdd").SetValue(ip_int)
+                        nodemap.FindNode("GevDiscoveryUnicastIPAddressAdd").Execute()
+                        logger.info(f"Unicast-IP {camera_ip} für Interface '{iface_name}' registriert.")
+            except Exception as e_iface:
+                logger.warning(f"Unicast-Setup auf '{iface_name}' fehlgeschlagen: {e_iface}")
 
 
 class IDSFrameGrabber:
@@ -196,46 +223,18 @@ class IDSFrameGrabber:
         try:
             ids_peak.Library.Initialize()
             dm = ids_peak.DeviceManager.Instance()
-            
-            config = _load_config()
-            camera_ip = config.get("camera_ip")
+
+            camera_ip = _load_config().get("camera_ip")
             if camera_ip:
-                import struct as _struct
-                import socket as _socket
                 try:
-                    ip_int = _struct.unpack("!I", _socket.inet_aton(camera_ip))[0]
                     dm.Update()
-                    systems = dm.Systems()
-                    sys_count = systems.size() if hasattr(systems, 'size') else len(systems)
-                    for sys_idx in range(sys_count):
-                        system = systems[sys_idx]
-                        sys_name = system.DisplayName()
-                        if "U3V" in sys_name or "USB" in sys_name:
-                            continue
-                        interfaces = system.Interfaces()
-                        if_count = interfaces.size() if hasattr(interfaces, 'size') else len(interfaces)
-                        for if_idx in range(if_count):
-                            iface_desc = interfaces[if_idx]
-                            if "Wi-Fi" in iface_desc.DisplayName():
-                                continue
-                            try:
-                                opened = iface_desc.OpenedInterface()
-                                nodemaps = opened.NodeMaps()
-                                nm_count = nodemaps.size() if hasattr(nodemaps, 'size') else len(nodemaps)
-                                if nm_count > 0:
-                                    nodemap = nodemaps[0]
-                                    if nodemap.HasNode("GevDiscoveryUnicastIPAddressToAdd"):
-                                        nodemap.FindNode("GevDiscoveryUnicastIPAddressToAdd").SetValue(ip_int)
-                                        nodemap.FindNode("GevDiscoveryUnicastIPAddressAdd").Execute()
-                            except Exception:
-                                pass
+                    _register_unicast_ip(dm, camera_ip)
                 except Exception:
                     pass
-            
+
             dm.Update()
             devices = dm.Devices()
-            dev_count = devices.size() if hasattr(devices, 'size') else len(devices)
-            for idx in range(dev_count):
+            for idx in range(_count(devices)):
                 desc = devices[idx]
                 model = desc.ModelName()
                 serial = desc.SerialNumber()
@@ -265,51 +264,19 @@ class IDSFrameGrabber:
             dm = ids_peak.DeviceManager.Instance()
 
             # --- Unicast-Erkennung für Netzwerk-Kameras konfigurieren ---
-            config = _load_config()
-            camera_ip = config.get("camera_ip")
+            camera_ip = _load_config().get("camera_ip")
             if camera_ip:
-                import struct as _struct
-                import socket as _socket
-                # IP-Adresse in 32-Bit Integer konvertieren (GigE Vision Standard)
-                ip_int = _struct.unpack("!I", _socket.inet_aton(camera_ip))[0]
-                logger.info(f"Konfiguriere Unicast-Suche für Kamera-IP: {camera_ip} (0x{ip_int:08X})")
-                
+                logger.info(f"Konfiguriere Unicast-Suche für Kamera-IP: {camera_ip} (0x{_ip_to_int(camera_ip):08X})")
                 # Erste Update-Runde, damit Interfaces geöffnet werden
                 dm.Update()
-                
                 try:
-                    systems = dm.Systems()
-                    sys_count = systems.size() if hasattr(systems, 'size') else len(systems)
-                    for sys_idx in range(sys_count):
-                        system = systems[sys_idx]
-                        sys_name = system.DisplayName()
-                        if "U3V" in sys_name or "USB" in sys_name:
-                            continue
-                        interfaces = system.Interfaces()
-                        if_count = interfaces.size() if hasattr(interfaces, 'size') else len(interfaces)
-                        for if_idx in range(if_count):
-                            iface_desc = interfaces[if_idx]
-                            iface_name = iface_desc.DisplayName()
-                            if "Wi-Fi" in iface_name:
-                                continue
-                            try:
-                                opened = iface_desc.OpenedInterface()
-                                nodemaps = opened.NodeMaps()
-                                nm_count = nodemaps.size() if hasattr(nodemaps, 'size') else len(nodemaps)
-                                if nm_count > 0:
-                                    nodemap = nodemaps[0]
-                                    if nodemap.HasNode("GevDiscoveryUnicastIPAddressToAdd"):
-                                        nodemap.FindNode("GevDiscoveryUnicastIPAddressToAdd").SetValue(ip_int)
-                                        nodemap.FindNode("GevDiscoveryUnicastIPAddressAdd").Execute()
-                                        logger.info(f"Unicast-IP {camera_ip} für Interface '{iface_name}' registriert.")
-                            except Exception as e_iface:
-                                logger.warning(f"Unicast-Setup auf '{iface_name}' fehlgeschlagen: {e_iface}")
+                    _register_unicast_ip(dm, camera_ip)
                 except Exception as e_systems:
                     logger.warning(f"Fehler bei der Unicast-Konfiguration: {e_systems}")
 
             dm.Update()
             devices = dm.Devices()
-            dev_count = devices.size() if hasattr(devices, 'size') else len(devices)
+            dev_count = _count(devices)
             if dev_count == 0:
                 logger.error("Keine IDS-Kamera gefunden!")
                 ids_peak.Library.Close()
@@ -522,26 +489,6 @@ class IDSFrameGrabber:
             pass
 
 
-def _check_dual_presence(boxes, dmx_min_conf=0.70, txt_min_conf=0.35, max_gap_ratio=2.5) -> bool:
-    """
-    Prüft VOR dem Auslösen des Auto-Scans, ob mindestens eine Klasse (DataMatrix oder Text)
-    im Bild vorhanden ist.
-    """
-    if boxes is None or len(boxes) == 0:
-        return False
-
-    for b in boxes:
-        cls_id = int(b.cls[0].cpu().item() if hasattr(b.cls[0], 'cpu') else b.cls[0])
-        conf = float(b.conf[0].cpu().item() if hasattr(b.conf[0], 'cpu') else b.conf[0])
-        if cls_id == 0 and conf >= dmx_min_conf:
-            return True
-        elif cls_id == 1 and conf >= txt_min_conf:
-            return True
-
-    return False
-
-
-
 class AIVisionApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -608,13 +555,9 @@ class AIVisionApp(ctk.CTk):
         self.after(200, self.refresh_cameras)
 
         # --- Scan-Logger initialisieren ---
-        if ScanLogger is not None:
-            master_log_dir = self._config.get("log_dir", r"U:\Temp\DataMatrixReader.logFiles")
-            save_all = self._config.get("save_all_scans", False)
-            self.scan_logger = ScanLogger(log_dir=master_log_dir, save_all_scans=save_all)
-        else:
-            self.scan_logger = None
-            logger.warning("ScanLogger nicht verfügbar — Scan-Logging deaktiviert.")
+        master_log_dir = self._config.get("log_dir", r"U:\Temp\DataMatrixReader.logFiles")
+        save_all = self._config.get("save_all_scans", False)
+        self.scan_logger = ScanLogger(log_dir=master_log_dir, save_all_scans=save_all)
 
         # --- TCP Server (Hintergrund-Dienst) starten ---
         self._start_tcp_server()
@@ -848,20 +791,6 @@ class AIVisionApp(ctk.CTk):
         if self.grabber:
             self.grabber.auto_exposure_target = target_br
 
-    def _on_auto_scan_toggled(self):
-        self.auto_scan_enabled = bool(self.auto_scan_switch.get())
-        self._config["auto_scan"] = self.auto_scan_enabled
-        _save_config(self._config)
-        logger.info(f"Auto-Scan Präsenzerkennung gesetzt auf: {self.auto_scan_enabled}")
-
-    def _on_save_all_scans_toggled(self):
-        val = bool(self.save_all_scans_switch.get())
-        self._config["save_all_scans"] = val
-        _save_config(self._config)
-        if self.scan_logger:
-            self.scan_logger.save_all_scans = val
-        logger.info(f"Bilder-Speicher-Modus: {'ALLE Bilder speichern' if val else 'Nur FEHLER-Bilder speichern'}")
-
     # ------------------------------------------------------------------ #
     #  Stream Steuerung                                                    #
     # ------------------------------------------------------------------ #
@@ -1006,6 +935,35 @@ class AIVisionApp(ctk.CTk):
         if hasattr(self, "tcp_info_label"):
             self.tcp_info_label.configure(text=text)
 
+    def _detect_labels(self, snapshot: np.ndarray) -> tuple[list[dict], bool, float, tuple | None, np.ndarray]:
+        """
+        YOLO-Detektion vor dem Scan (Thread-Sperre gegen gleichzeitige Nutzung durch die Display-Loop).
+
+        Returns:
+            (Detektionen mit conf > 0.3, 2-Klassen-Modus, beste Konfidenz,
+             Etikett-Box im 1-Klassen-Modus, zu scannendes Bild)
+        """
+        if self.model is None:
+            return [], False, 0.0, None, snapshot
+        with self._model_lock:
+            results = self.model.predict(snapshot, conf=yolo_detector.PREDICT_CONF, verbose=False)
+        detections = yolo_detector.extract_detections(results[0], min_conf=0.3) if results else []
+
+        detected_classes = {d["cls"] for d in detections}
+        if self._is_2class and (0 in detected_classes or 1 in detected_classes):
+            detection_conf = max(d["conf"] for d in detections)
+            logger.info(f"2-Klassen-Modus: {len(detections)} Detections (Klassen: {detected_classes}, "
+                        f"max Conf: {detection_conf:.2f})")
+            return detections, True, detection_conf, None, snapshot
+        if detections:
+            best_det = max(detections, key=lambda d: d["conf"])
+            scan_frame = scanner.deskew_crop(snapshot, best_det["box"], padding=60)
+            logger.info(f"1-Klassen KI Etikett gefunden! Konfidenz: {best_det['conf']:.2f}. Ausschneiden und "
+                        f"Begradigen auf {scan_frame.shape[1]}x{scan_frame.shape[0]}.")
+            return detections, False, best_det["conf"], best_det["box"], scan_frame
+        logger.warning("KI hat kein Etikett gefunden, scanne gesamtes Bild.")
+        return detections, False, 0.0, None, snapshot
+
     def _process_tcp_trigger_scan(self, token_id: int = 0) -> str | None:
         """Wird aufgerufen wenn per TCP ein Trigger '+' empfangen wird."""
         cancellation_check = lambda: (token_id > 0 and self._tcp_scan_token != token_id)
@@ -1022,36 +980,7 @@ class AIVisionApp(ctk.CTk):
 
         start_time = time.time()
         scan_snapshot = frame.copy()
-        scan_frame = scan_snapshot
-        detection_conf = 0.0
-        detection_box = None
-
-        yolo_detections = []
-        use_2class = False
-        if self.model is not None:
-            with self._model_lock:
-                results = self.model.predict(scan_snapshot, conf=0.15, verbose=False)
-            if results and len(results[0].boxes) > 0:
-                for box in results[0].boxes:
-                    cls_id = int(box.cls[0])
-                    conf = float(box.conf[0])
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    if conf > 0.3:
-                        yolo_detections.append({
-                            "cls": cls_id,
-                            "box": (x1, y1, x2, y2),
-                            "conf": conf,
-                        })
-
-                detected_classes = set(d["cls"] for d in yolo_detections)
-                if self._is_2class and (0 in detected_classes or 1 in detected_classes):
-                    use_2class = True
-                    detection_conf = max(d["conf"] for d in yolo_detections) if yolo_detections else 0.0
-                elif yolo_detections:
-                    best_det = max(yolo_detections, key=lambda d: d["conf"])
-                    detection_conf = best_det["conf"]
-                    detection_box = best_det["box"]
-                    scan_frame = scanner.deskew_crop(scan_snapshot, detection_box, padding=60)
+        yolo_detections, use_2class, detection_conf, detection_box, scan_frame = self._detect_labels(scan_snapshot)
 
         # Abbrechen & Verwerfen falls in der Zwischenzeit ein neuer Trigger empfangen wurde
         if cancellation_check():
@@ -1125,75 +1054,45 @@ class AIVisionApp(ctk.CTk):
     def _start_stream_worker(self):
         """Laeuft im Hintergrund-Thread: YOLO laden + Kamera verbinden."""
         try:
-            # 1) YOLO Modell laden (kann 5-20 Sekunden dauern)
-            #    Import findet hier statt, damit die GUI sofort startet!
-            global YOLO
-            if YOLO is None:
-                self.after(0, lambda: self._set_status("Lade KI-Modell...", ACCENT))
-                from ultralytics import YOLO as _YOLO
-                YOLO = _YOLO
-                logger.info("YOLO (ultralytics) lazy-importiert.")
-
+            # 1) YOLO Modell laden (kann 5-20 Sekunden dauern); ultralytics wird erst hier importiert,
+            #    damit die GUI sofort startet.
             if self.model is None:
-                if getattr(sys, 'frozen', False):
-                    app_dir = os.path.dirname(sys.executable)
-                else:
-                    app_dir = os.path.dirname(os.path.abspath(__file__))
-                
-                model_path_2class = os.path.join(app_dir, "runs", "detect", "training_runs_v2", "horde_2class", "weights", "best.pt")
-                model_path_1class = os.path.join(app_dir, "runs", "detect", "training_runs", "horde_model", "weights", "best.pt")
-                
-                if os.path.exists(model_path_2class):
-                    self.model = YOLO(model_path_2class)
-                    self._is_2class = True
-                    logger.info(f"2-Klassen YOLO Modell geladen (datamatrix+text): {model_path_2class}")
-                elif os.path.exists(model_path_1class):
-                    self.model = YOLO(model_path_1class)
-                    self._is_2class = False
-                    logger.info(f"1-Klassen YOLO Modell geladen (Horde): {model_path_1class}")
-                else:
-                    if getattr(sys, 'frozen', False):
-                        base_model_path = os.path.join(sys._MEIPASS, "yolov10n.pt")
-                    else:
-                        base_model_path = os.path.join(app_dir, "yolov10n.pt")
-                    
-                    self.model = YOLO(base_model_path)
-                    self._is_2class = False
-                    logger.warning(f"Kein trainiertes Modell gefunden, nutze Standard {base_model_path}")
+                self.after(0, lambda: self._set_status("Lade KI-Modell...", ACCENT))
+                self.model, self._is_2class = yolo_detector.load_model()
 
             # 2) Kamera-Stream verbinden
             self.after(0, lambda: self._set_status("Verbinde mit Kamera...", WARN))
-            selected_serial = self._config.get("selected_camera_serial")
             grabber = IDSFrameGrabber()
-            if not grabber.start(target_serial=selected_serial):
+            if not grabber.start(target_serial=self._config.get("selected_camera_serial")):
                 self.after(0, self._on_stream_failed)
                 return
 
             self.grabber = grabber
-            # Set initial camera settings
-            try:
-                exp_val = float(self._config.get("last_exposure", 20.0))
-                gain_val = float(self._config.get("last_gain", 1.0))
-                self.grabber.set_exposure(exp_val * 1000.0)
-                self.grabber.set_gain(gain_val)
-            except Exception:
-                pass
-
-            # Auto-Exposure aus Config initialisieren
-            if self._config.get("auto_exposure_enabled", False):
-                self.grabber.auto_exposure_enabled = True
-                self.grabber.auto_exposure_target = int(self._config.get("auto_exposure_target", 130))
-                self.grabber.auto_exposure_deadzone = int(self._config.get("auto_exposure_deadzone", 10))
-                self.grabber.auto_exposure_min_us = float(self._config.get("auto_exposure_min_ms", 1.0)) * 1000.0
-                self.grabber.auto_exposure_max_us = float(self._config.get("auto_exposure_max_ms", 50.0)) * 1000.0
-                self.grabber.auto_exposure_max_gain = float(self._config.get("auto_exposure_max_gain", 12.0))
-                logger.info("Auto-Exposure beim Stream-Start aktiviert.")
-
+            self._configure_grabber(grabber)
             self.after(0, self._on_stream_connected)
 
         except Exception as e:
             logger.error(f"Stream-Start Fehler: {e}")
             self.after(0, lambda: self._on_stream_error(str(e)))
+
+    def _configure_grabber(self, grabber: IDSFrameGrabber):
+        """Übernimmt Belichtung, Gain und Auto-Exposure-Parameter aus der Config."""
+        try:
+            exp_val = float(self._config.get("last_exposure", 20.0))
+            gain_val = float(self._config.get("last_gain", 1.0))
+            grabber.set_exposure(exp_val * 1000.0)
+            grabber.set_gain(gain_val)
+        except Exception:
+            pass
+
+        if self._config.get("auto_exposure_enabled", False):
+            grabber.auto_exposure_enabled = True
+            grabber.auto_exposure_target = int(self._config.get("auto_exposure_target", 130))
+            grabber.auto_exposure_deadzone = int(self._config.get("auto_exposure_deadzone", 10))
+            grabber.auto_exposure_min_us = float(self._config.get("auto_exposure_min_ms", 1.0)) * 1000.0
+            grabber.auto_exposure_max_us = float(self._config.get("auto_exposure_max_ms", 50.0)) * 1000.0
+            grabber.auto_exposure_max_gain = float(self._config.get("auto_exposure_max_gain", 12.0))
+            logger.info("Auto-Exposure aus Config aktiviert.")
 
     def _on_stream_connected(self):
         """Callback im Main-Thread: Stream erfolgreich verbunden."""
@@ -1337,21 +1236,7 @@ class AIVisionApp(ctk.CTk):
                     selected_serial = self._config.get("selected_camera_serial")
                     if new_grabber.start(target_serial=selected_serial):
                         self.grabber = new_grabber
-                        try:
-                            exp_val = float(self._config.get("last_exposure", 20.0))
-                            gain_val = float(self._config.get("last_gain", 1.0))
-                            self.grabber.set_exposure(exp_val * 1000.0)
-                            self.grabber.set_gain(gain_val)
-                        except Exception:
-                            pass
-                        # Auto-Exposure bei Reconnect beibehalten
-                        if self._config.get("auto_exposure_enabled", False):
-                            self.grabber.auto_exposure_enabled = True
-                            self.grabber.auto_exposure_target = int(self._config.get("auto_exposure_target", 130))
-                            self.grabber.auto_exposure_deadzone = int(self._config.get("auto_exposure_deadzone", 10))
-                            self.grabber.auto_exposure_min_us = float(self._config.get("auto_exposure_min_ms", 1.0)) * 1000.0
-                            self.grabber.auto_exposure_max_us = float(self._config.get("auto_exposure_max_ms", 50.0)) * 1000.0
-                            self.grabber.auto_exposure_max_gain = float(self._config.get("auto_exposure_max_gain", 12.0))
+                        self._configure_grabber(new_grabber)
                         logger.info("Kamera: Auto-Reconnect erfolgreich!")
                         self.after(0, lambda: self._set_status("● LIVE (wiederverbunden)", SUCCESS))
                         _reconnect_logged = False
@@ -1381,15 +1266,7 @@ class AIVisionApp(ctk.CTk):
 
                 self._last_frame = frame.copy()
 
-                display_frame = frame
-                if self._roi is not None:
-                    rx0, ry0, rx1, ry1 = self._roi
-                    fh, fw = frame.shape[:2]
-                    rx0 = max(0, min(rx0, fw - 1))
-                    ry0 = max(0, min(ry0, fh - 1))
-                    rx1 = max(rx0 + 1, min(rx1, fw))
-                    ry1 = max(ry0 + 1, min(ry1, fh))
-                    display_frame = frame[ry0:ry1, rx0:rx1]
+                display_frame = self._crop_to_roi(frame)
 
                 # YOLO Inferenz: max 2x pro Sekunde (Throttling)
                 # Thread-Sperre verhindert gleichzeitige Nutzung durch Scan-Thread (W4)
@@ -1397,7 +1274,7 @@ class AIVisionApp(ctk.CTk):
                 if self.model is not None and (now - self._last_infer_time) >= 0.5:
                     self._last_infer_time = now
                     with self._model_lock:
-                        results = self.model.predict(display_frame, conf=0.15, verbose=False)
+                        results = self.model.predict(display_frame, conf=yolo_detector.PREDICT_CONF, verbose=False)
                         self._last_detections = results[0]
 
                 # --- Smart Auto-Scan (Präsenzerkennung: DataMatrix ODER Text erkannt) ---
@@ -1405,7 +1282,7 @@ class AIVisionApp(ctk.CTk):
                     has_presence = False
                     with self._model_lock:
                         if self._last_detections is not None and hasattr(self._last_detections, 'boxes'):
-                            has_presence = _check_dual_presence(self._last_detections.boxes)
+                            has_presence = yolo_detector.has_label_presence(self._last_detections.boxes)
                     
                     if has_presence:
                         self._absence_counter = 0
@@ -1487,6 +1364,18 @@ class AIVisionApp(ctk.CTk):
     # ------------------------------------------------------------------ #
     #  Scan Trigger                                                        #
     # ------------------------------------------------------------------ #
+    def _crop_to_roi(self, frame: np.ndarray) -> np.ndarray:
+        """Schneidet das Frame auf den gesetzten ROI zu (auf die Bildgrenzen begrenzt)."""
+        if self._roi is None:
+            return frame
+        rx0, ry0, rx1, ry1 = self._roi
+        fh, fw = frame.shape[:2]
+        rx0 = max(0, min(rx0, fw - 1))
+        ry0 = max(0, min(ry0, fh - 1))
+        rx1 = max(rx0 + 1, min(rx1, fw))
+        ry1 = max(ry0 + 1, min(ry1, fh))
+        return frame[ry0:ry1, rx0:rx1]
+
     def trigger_scan(self):
         if self._scan_running:
             return
@@ -1504,16 +1393,9 @@ class AIVisionApp(ctk.CTk):
         self.loading_bar.start()
 
         # Wenn ein ROI gesetzt ist, nur diesen Bereich scannen
-        frame = self._last_frame.copy()
+        frame = self._crop_to_roi(self._last_frame.copy())
         if self._roi is not None:
-            rx0, ry0, rx1, ry1 = self._roi
-            fh, fw = frame.shape[:2]
-            rx0 = max(0, min(rx0, fw - 1))
-            ry0 = max(0, min(ry0, fh - 1))
-            rx1 = max(rx0 + 1, min(rx1, fw))
-            ry1 = max(ry0 + 1, min(ry1, fh))
-            frame = frame[ry0:ry1, rx0:rx1]
-            logger.info(f"Scanne ROI-Ausschnitt: {rx1-rx0}x{ry1-ry0} Pixel")
+            logger.info(f"Scanne ROI-Ausschnitt: {frame.shape[1]}x{frame.shape[0]} Pixel")
 
         threading.Thread(target=self._run_scan, args=(frame,), daemon=True).start()
 
@@ -1525,44 +1407,7 @@ class AIVisionApp(ctk.CTk):
         # Zeitpunkt des Scans aktuell war, nicht self._last_frame
         # (das sich im Hintergrund ständig ändert).
         scan_snapshot = frame.copy()
-        scan_frame = scan_snapshot
-        detection_conf = 0.0
-        detection_box = None
-
-        # KI-basiertes Zuschneiden (Cropping) / 2-Klassen Erkennung vor dem Scannen
-        # Thread-Sperre verhindert gleichzeitige YOLO-Nutzung durch Display-Loop
-        yolo_detections = []
-        use_2class = False
-        if self.model is not None:
-            with self._model_lock:
-                results = self.model.predict(scan_snapshot, conf=0.15, verbose=False)
-            if results and len(results[0].boxes) > 0:
-                for box in results[0].boxes:
-                    cls_id = int(box.cls[0])
-                    conf = float(box.conf[0])
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    if conf > 0.3:
-                        yolo_detections.append({
-                            "cls": cls_id,
-                            "box": (x1, y1, x2, y2),
-                            "conf": conf,
-                        })
-
-                detected_classes = set(d["cls"] for d in yolo_detections)
-                if self._is_2class and (0 in detected_classes or 1 in detected_classes):
-                    use_2class = True
-                    detection_conf = max(d["conf"] for d in yolo_detections) if yolo_detections else 0.0
-                    logger.info(f"2-Klassen-Modus: {len(yolo_detections)} Detections (Klassen: {detected_classes}, max Conf: {detection_conf:.2f})")
-                elif yolo_detections:
-                    best_det = max(yolo_detections, key=lambda d: d["conf"])
-                    detection_conf = best_det["conf"]
-                    detection_box = best_det["box"]
-                    scan_frame = scanner.deskew_crop(scan_snapshot, detection_box, padding=60)
-                    logger.info(f"1-Klassen KI Etikett gefunden! Konfidenz: {detection_conf:.2f}. Ausschneiden und Begradigen auf {scan_frame.shape[1]}x{scan_frame.shape[0]}.")
-                else:
-                    logger.warning("KI hat kein Etikett gefunden, scanne gesamtes Bild.")
-            else:
-                logger.warning("KI hat kein Etikett gefunden, scanne gesamtes Bild.")
+        yolo_detections, use_2class, detection_conf, detection_box, scan_frame = self._detect_labels(scan_snapshot)
 
         if use_2class:
             result = scanner.scan_2class(scan_snapshot, yolo_detections)
@@ -1723,15 +1568,7 @@ class AIVisionApp(ctk.CTk):
         filepath = os.path.join(self.training_dir, filename)
         
         # Gezoomtes Frame verwenden, falls ROI aktiv ist
-        frame_to_save = self._last_frame.copy()
-        if self._roi is not None:
-            rx0, ry0, rx1, ry1 = self._roi
-            fh, fw = frame_to_save.shape[:2]
-            rx0 = max(0, min(rx0, fw - 1))
-            ry0 = max(0, min(ry0, fh - 1))
-            rx1 = max(rx0 + 1, min(rx1, fw))
-            ry1 = max(ry0 + 1, min(ry1, fh))
-            frame_to_save = frame_to_save[ry0:ry1, rx0:rx1]
+        frame_to_save = self._crop_to_roi(self._last_frame.copy())
 
         cv2.imwrite(filepath, frame_to_save)
         self._set_status(f"Gespeichert: {filename}", SUCCESS)

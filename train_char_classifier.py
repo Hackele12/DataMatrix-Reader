@@ -15,7 +15,6 @@ import sys
 import random
 import logging
 import argparse
-import string
 
 import cv2
 import numpy as np
@@ -367,7 +366,6 @@ def train_model(
         
         train_loss /= train_total
         train_accs = [c / train_total for c in train_correct]
-        train_full_acc = sum(1 for _ in range(train_total)) # placeholder
         
         # --- Validation ---
         model.eval()

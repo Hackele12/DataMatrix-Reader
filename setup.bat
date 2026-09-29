@@ -9,7 +9,7 @@ echo  DataDetector v23 - Einrichtung
 echo ============================================================
 echo.
 
-if not exist "scanner.py" (
+if not exist "scanner\__init__.py" (
     echo [FEHLER] Programmdateien nicht gefunden.
     echo Bitte die ZIP-Datei zuerst vollstaendig entpacken ^(Rechtsklick - Alle extrahieren^)
     echo und setup.bat im entpackten Ordner starten.

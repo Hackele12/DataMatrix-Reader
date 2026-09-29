@@ -1,8 +1,5 @@
 """
-train_v2.py — Trainings-Skript für YOLOv10 mit 2 Klassen (datamatrix + text).
-
-Basiert auf train.py, aber nutzt das 2-Klassen-Dataset aus dataset_v2/.
-Integriert Active Learning (importiert automatisch Bilder aus auto_training_data/).
+train_v2.py — Trainings-Skript für YOLOv10 mit 2 Klassen (datamatrix + text) auf dataset_v2/.
 
 Nutzung:
     .venv\\Scripts\\python.exe train_v2.py
@@ -164,9 +161,8 @@ def main():
         logger.error("ultralytics nicht installiert! pip install ultralytics")
         sys.exit(1)
     
-    # 6. Modellpfad bestimmen
-    # Für 2-Klassen: Starte immer von yolov10n.pt (Transfer Learning),
-    # da das bestehende best.pt nur 1 Klasse hat
+    # 6. Modellpfad bestimmen: Feintuning des vorhandenen 2-Klassen-Modells, sonst Start vom Basismodell
+    #    (das alte 1-Klassen-Modell ist wegen der anderen Klassenanzahl ungeeignet)
     v2_model_path = os.path.join(
         project_dir, "runs", "detect", "training_runs_v2",
         "horde_2class", "weights", "best.pt"
@@ -231,8 +227,8 @@ def main():
         )
         if os.path.exists(best_weights):
             logger.info(f"[OK] Bestes Modell: {best_weights}")
-            logger.info(f"\nNächster Schritt: Benchmark ausführen mit")
-            logger.info(f"  .venv\\Scripts\\python.exe benchmark_suite.py --output benchmark_v2.json --compare benchmark_run_step42.json")
+            logger.info("\nNächster Schritt: Benchmark ausführen mit")
+            logger.info("  .venv\\Scripts\\python.exe benchmark_gui.py --headless")
         
         logger.info("=" * 60)
         

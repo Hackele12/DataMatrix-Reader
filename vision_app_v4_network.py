@@ -70,6 +70,7 @@ except ImportError:
 # --- Scanner Modul laden ---
 try:
     import scanner
+    import yolo_detector
     logger.info("Scanner-Modul (Dual-Validation) erfolgreich geladen.")
 except Exception as e:
     logger.error(f"Scanner Importfehler: {e}")
@@ -77,7 +78,6 @@ except Exception as e:
 
 # --- Scan-Logger laden ---
 try:
-    import scan_logger
     from scan_logger import ScanLogger, resolve_log_directory
     logger.info("ScanLogger-Modul geladen.")
 except Exception as e:
@@ -124,6 +124,14 @@ def load_master_config(config_path: str) -> tuple[list[dict], str]:
     except Exception as e:
         logger.error(f"Fehler beim Lesen der Config '{config_path}': {e}")
     return default_cams, default_log_dir
+
+
+def _device_ip(nodemap) -> str | None:
+    """Aktuelle IP-Adresse einer geöffneten GigE-Kamera oder None."""
+    for node_name in ("GevCurrentIPAddress", "GevDeviceIPAddress"):
+        if nodemap.HasNode(node_name):
+            return socket.inet_ntoa(struct.pack("!I", nodemap.FindNode(node_name).Value()))
+    return None
 
 
 class IDSFrameGrabber:
@@ -204,13 +212,7 @@ class IDSFrameGrabber:
                     try:
                         dev = desc.OpenDevice(ids_peak.DeviceAccessType_Control)
                         nm = dev.RemoteDevice().NodeMaps()[0]
-                        dev_ip = None
-                        if nm.HasNode("GevCurrentIPAddress"):
-                            ip_val = nm.FindNode("GevCurrentIPAddress").Value()
-                            dev_ip = socket.inet_ntoa(struct.pack("!I", ip_val))
-                        elif nm.HasNode("GevDeviceIPAddress"):
-                            ip_val = nm.FindNode("GevDeviceIPAddress").Value()
-                            dev_ip = socket.inet_ntoa(struct.pack("!I", ip_val))
+                        dev_ip = _device_ip(nm)
 
                         logger.info(f"[{self.cam_name}] Prüfe Kamera S/N {desc.SerialNumber()}: IP={dev_ip}")
                         if dev_ip == self.camera_ip:
@@ -231,13 +233,7 @@ class IDSFrameGrabber:
                     try:
                         dev = desc.OpenDevice(ids_peak.DeviceAccessType_Control)
                         nm = dev.RemoteDevice().NodeMaps()[0]
-                        dev_ip = None
-                        if nm.HasNode("GevCurrentIPAddress"):
-                            ip_val = nm.FindNode("GevCurrentIPAddress").Value()
-                            dev_ip = socket.inet_ntoa(struct.pack("!I", ip_val))
-                        elif nm.HasNode("GevDeviceIPAddress"):
-                            ip_val = nm.FindNode("GevDeviceIPAddress").Value()
-                            dev_ip = socket.inet_ntoa(struct.pack("!I", ip_val))
+                        dev_ip = _device_ip(nm)
 
                         if dev_ip and dev_ip in self.other_configured_ips:
                             logger.info(f"[{self.cam_name}] Überspringe Kamera S/N {desc.SerialNumber()} (IP {dev_ip}), da sie für eine andere Kamera reserviert ist.")
@@ -487,26 +483,6 @@ class FallbackFrameGrabber:
         logger.info(f"[{self.cam_name}] Fallback-Grabber gestoppt.")
 
 
-def _check_dual_presence(boxes, dmx_min_conf=0.70, txt_min_conf=0.35, max_gap_ratio=2.5) -> bool:
-    """
-    Prüft VOR dem Auslösen des Auto-Scans, ob mindestens eine Klasse (DataMatrix oder Text)
-    im Bild vorhanden ist.
-    """
-    if boxes is None or len(boxes) == 0:
-        return False
-
-    for b in boxes:
-        cls_id = int(b.cls[0].cpu().item() if hasattr(b.cls[0], 'cpu') else b.cls[0])
-        conf = float(b.conf[0].cpu().item() if hasattr(b.conf[0], 'cpu') else b.conf[0])
-        if cls_id == 0 and conf >= dmx_min_conf:
-            return True
-        elif cls_id == 1 and conf >= txt_min_conf:
-            return True
-
-    return False
-
-
-
 class CameraService:
     """Service für eine einzelne Kamera inklusive KI-Auswertung und TCP-Server."""
     def __init__(self, cam_cfg: dict, shared_yolo_model, master_log_dir: str = r"U:\Temp\DataMatrixReader.logFiles", is_2class: bool = False):
@@ -592,16 +568,7 @@ class CameraService:
             if self.model:
                 results = self.model(scan_snapshot, verbose=False)
                 if results and len(results[0].boxes) > 0:
-                    for box in results[0].boxes:
-                        cls_id = int(box.cls[0])
-                        conf = float(box.conf[0])
-                        x1, y1, x2, y2 = map(int, box.xyxy[0])
-                        if conf > 0.3:
-                            yolo_detections.append({
-                                "cls": cls_id,
-                                "box": (x1, y1, x2, y2),
-                                "conf": conf,
-                            })
+                    yolo_detections = yolo_detector.extract_detections(results[0], min_conf=0.3)
 
                     detected_classes = set(d["cls"] for d in yolo_detections)
                     if self._is_2class and (0 in detected_classes or 1 in detected_classes):
@@ -733,7 +700,7 @@ class CameraService:
                 if self.model:
                     results = self.model(frame, verbose=False)
                     if results and len(results[0].boxes) > 0:
-                        has_presence = _check_dual_presence(results[0].boxes)
+                        has_presence = yolo_detector.has_label_presence(results[0].boxes)
                 
                 if has_presence:
                     absence_counter = 0
@@ -758,10 +725,10 @@ class CameraService:
 
 
 def main():
-    print(f"==================================================")
-    print(f"    DATA DETECTOR MULTI-CAMERA SERVER (v4.0)")
+    print("=" * 50)
+    print("    DATA DETECTOR MULTI-CAMERA SERVER (v4.0)")
     print(f"    Konfigurationsdatei: {CONFIG_FILE}")
-    print(f"==================================================\n")
+    print("=" * 50 + "\n")
 
     cams_cfg, master_log_dir = load_master_config(CONFIG_FILE)
     logger.info(f"Master Log-Verzeichnis: {master_log_dir}")
@@ -778,23 +745,8 @@ def main():
     shared_yolo_model = None
     _is_2class_model = False
     try:
-        from ultralytics import YOLO as _YOLO
-        app_dir = os.path.dirname(os.path.abspath(__file__))
-        # Bevorzugt: 2-Klassen-Modell (datamatrix + text)
-        model_path_2class = os.path.join(app_dir, "runs", "detect", "training_runs_v2", "horde_2class", "weights", "best.pt")
-        # Fallback: 1-Klassen-Modell (Horde)
-        model_path_1class = os.path.join(app_dir, "runs", "detect", "training_runs", "horde_model", "weights", "best.pt")
-        if os.path.exists(model_path_2class):
-            shared_yolo_model = _YOLO(model_path_2class)
-            _is_2class_model = True
-            logger.info(f"2-Klassen YOLO Modell geladen (datamatrix+text): {model_path_2class}")
-        elif os.path.exists(model_path_1class):
-            shared_yolo_model = _YOLO(model_path_1class)
-            logger.info(f"1-Klassen YOLO Modell geladen (Horde): {model_path_1class}")
-        else:
-            base_path = os.path.join(app_dir, "yolov10n.pt")
-            shared_yolo_model = _YOLO(base_path)
-            logger.warning(f"Standard YOLO Modell geladen: {base_path}")
+        shared_yolo_model, _is_2class_model = yolo_detector.load_model()
+        logger.info(f"YOLO Modell geladen: {yolo_detector.find_model_path()[0]} (2-Klassen: {_is_2class_model})")
     except Exception as e:
         logger.error(f"YOLO konnte nicht geladen werden: {e}")
 

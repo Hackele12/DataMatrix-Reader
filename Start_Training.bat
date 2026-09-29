@@ -12,7 +12,7 @@ if exist ".venv\Scripts\activate.bat" (
     call ".venv\Scripts\activate.bat"
 )
 
-python train.py
+python train_v2.py %*
 
 echo.
 echo Training abgeschlossen!

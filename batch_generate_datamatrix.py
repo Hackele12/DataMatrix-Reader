@@ -4,7 +4,6 @@ Generiert alle möglichen Code-Kombinationen (A-Z, 000-999) als Schwarz-Weiß PN
 """
 
 import os
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pystrich.datamatrix import DataMatrixEncoder

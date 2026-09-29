@@ -8,10 +8,10 @@ The system is optimized to run as a headless background daemon, communicating wi
 
 ## Key Features
 
-- **Headless TCP/IP Interface**: Listen on port `9500` for trigger signals (`+`), run the detection and scan pipeline, and respond with the output followed by a Carriage Return (`\r`).
+- **Headless TCP/IP Interface**: Listen on port `9500` for trigger signals (`+`), run the detection and scan pipeline, and respond with `STX <code> CR LF EOT` (`\x02<code>\r\n\x04`).
 - **Object Detection Pre-localization (YOLOv10)**: Fast bounding box localization of label tags to extract the exact Region of Interest (ROI) with safety padding.
 - **Multi-Modal Dual-Validation**:
-  - **DataMatrix (2D) Decoder**: Direct decoding via `pylibdmtx` with parallel image pre-processing fallbacks (Unsharp Masking, Otsu & Adaptive Thresholding, Morphology, and Cubic Upscaling).
+  - **DataMatrix (2D) Decoder**: Direct decoding via `zxing-cpp` (incl. dot-peen preprocessing) with `pylibdmtx` fallbacks (Unsharp Masking, Otsu & Adaptive Thresholding, Morphology, and Cubic Upscaling).
   - **OCR (Optical Character Recognition)**: High-precision text reading using local EasyOCR models.
 - **Mathematical Matrix Reconstruction**:
   - Homography correction using perspective warping.
@@ -25,9 +25,17 @@ The system is optimized to run as a headless background daemon, communicating wi
 
 ## Repository Structure
 
-- `vision_app_v4_network.py`: Headless TCP socket server daemon, managing the camera frame grabber and orchestrating the YOLO detection and scanner validation.
-- `scanner.py`: Core processing pipeline running the concurrent DataMatrix reconstruction and EasyOCR validation.
-- `train.py` & `Start_Training.bat`: Training pipeline wrapper to retrain the YOLOv10 model.
+- `vision_app_v4_network.py`: Headless multi-camera TCP socket server (`Start_DataDetector_v4_Network.bat`).
+- `vision_app.py`: Desktop app for a single camera with live view and TCP trigger (`Start_DataDetector.bat`).
+- `scanner/`: Core scan pipeline (DataMatrix decoding, OCR, fusion). Entry points `scanner.scan_2class()` and `scanner.scan()`; feature switches in `scanner/config.py`.
+- `yolo_detector.py`: YOLO model selection and conversion of detections for the scanner.
+- `scan_logger.py` & `log_analyzer_app.py`: Structured scan logging (JSONL) and log analysis GUI (`Start_LogAnalyzer.bat`).
+- `horde_db.py`: Image database of verified scans (`hard_scans_cache/`).
+- `benchmark_gui.py`: Benchmark and ground-truth tool (`Start_Benchmark.bat`, headless: `benchmark_gui.py --headless`).
+- `train_v2.py` & `Start_Training.bat`: Training of the 2-class YOLOv10 model (`dataset_v2/`, prepared by `prepare_dataset_v2.py` / `relabel_2class.py`).
+- `train_char_classifier.py`, `train_pacc_real.py`, `train_unet_binarizer.py`, `export_*_onnx.py`, `models/`: Training and ONNX export of the optional PACC and MicroUNet models.
+- `generate_datamatrix.py` & `batch_generate_datamatrix.py`: Reference images in `generated_codes/`.
+- `create_v23_release.py` & `setup.bat`: Offline release package and installation.
 
 ---
 
@@ -46,10 +54,7 @@ The system is optimized to run as a headless background daemon, communicating wi
    Start_DataDetector_v4_Network.bat
    ```
 3. **Simulate a Scan Trigger**:
-   Run the test client script to verify connection and communication:
-   ```powershell
-   .\.venv\Scripts\python.exe test_trigger.py
-   ```
+   Send `+` to the camera port (e.g. `9500`) with any TCP client; the server answers with the decoded code or `ERROR`.
 
 ---
 

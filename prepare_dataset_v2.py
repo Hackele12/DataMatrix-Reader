@@ -7,7 +7,6 @@ Kombiniert:
 """
 
 import os
-import sys
 import glob
 import shutil
 import logging

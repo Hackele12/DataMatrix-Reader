@@ -5,21 +5,22 @@ für DataDetector.
 Features:
   1. Übersicht aller Testbilder aus training_data/ (oder --images <Ordner> --gt <datei.json>)
   2. Ground-Truth-Editor: Bild-für-Bild den tatsächlichen Code annotieren
-  3. Benchmark starten mit Fortschrittsbalken
+  3. Benchmark starten mit Fortschrittsbalken (ohne GUI: --headless)
   4. Detaillierte Ergebnis-Analyse (Erfolgsrate, Genauigkeit, Fehlerverteilung)
   5. Per-Image-Detailansicht: YOLO-Boxen, Crops, Scan-Ergebnis, Pipeline-Schritte
+
+Der Benchmark nutzt dieselbe Pipeline wie die Produktion: YOLO-Detektion → scanner.scan_2class().
 """
 
+import argparse
+import glob
+import json
+import logging
 import os
 import sys
-import json
-import time
-import glob
-import argparse
-import logging
 import threading
+import time
 from datetime import datetime
-from pathlib import Path
 
 # --- KMP Fix ---
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -28,7 +29,7 @@ import cv2
 import numpy as np
 import tkinter as tk
 import customtkinter as ctk
-from PIL import Image, ImageTk, ImageDraw, ImageFont
+from PIL import Image
 
 # --- Logging ---
 logging.basicConfig(
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 # --- Scanner & YOLO ---
 try:
     import scanner
+    import yolo_detector
 except Exception as e:
     logger.error(f"Scanner Importfehler: {e}")
     sys.exit(1)
@@ -49,6 +51,9 @@ except Exception as e:
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 IMAGE_DIR = os.path.join(APP_DIR, "training_data")
 GROUND_TRUTH_PATH = os.path.join(APP_DIR, "ground_truth.json")
+REPORTS_DIR = os.path.join(APP_DIR, "benchmark_reports")
+BASELINE_PATH = os.path.join(APP_DIR, "benchmark_baseline.json")
+BENCHMARK_VERSION = "2.3.0"
 
 # --- Farben (Dark Theme) ---
 BG_DARK = "#0f0f13"
@@ -69,78 +74,190 @@ PROGRESS_BG = "#1e1e30"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  YOLO-Modell Laden
+#  Ground-Truth & Testbilder
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _load_yolo_model():
-    """Lädt das beste verfügbare YOLOv10-Modell."""
-    try:
-        from ultralytics import YOLO
-    except ImportError:
-        logger.error("ultralytics nicht installiert.")
-        return None
-
-    # 1. Trainiertes 2-Klassen Modell (Aktueller Stand)
-    path_2class = os.path.join(
-        APP_DIR, "runs", "detect", "training_runs_v2",
-        "horde_2class", "weights", "best.pt"
-    )
-    if os.path.exists(path_2class):
-        logger.info(f"Lade trainiertes 2-Klassen YOLO-Modell: {path_2class}")
-        return YOLO(path_2class)
-
-    # 2. Älteres 1-Klassen Modell Fallback
-    path_1class = os.path.join(
-        APP_DIR, "runs", "detect", "training_runs",
-        "horde_model", "weights", "best.pt"
-    )
-    if os.path.exists(path_1class):
-        logger.info(f"Lade trainiertes 1-Klassen YOLO-Modell: {path_1class}")
-        return YOLO(path_1class)
-
-    # 3. Base Modell Fallback
-    base_path = os.path.join(APP_DIR, "yolov10n.pt")
-    if os.path.exists(base_path):
-        logger.warning(f"Kein trainiertes Modell, nutze Base: {base_path}")
-        return YOLO(base_path)
-
-    logger.error("Kein YOLO-Modell gefunden.")
-    return None
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Ground-Truth Verwaltung
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def load_ground_truth() -> dict:
-    """Lädt die Ground-Truth-Datei."""
-    if os.path.exists(GROUND_TRUTH_PATH):
+def load_ground_truth(path: str) -> dict:
+    """Lädt die Ground-Truth-Datei (Dateiname → Code)."""
+    if os.path.exists(path):
         try:
-            with open(GROUND_TRUTH_PATH, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
             logger.warning(f"Fehler beim Laden der Ground Truth: {e}")
     return {}
 
 
-def save_ground_truth(gt_map: dict):
+def save_ground_truth(gt_map: dict, path: str):
     """Speichert die Ground-Truth-Datei."""
-    with open(GROUND_TRUTH_PATH, "w", encoding="utf-8") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(gt_map, f, indent=2, ensure_ascii=False)
     logger.info(f"Ground Truth gespeichert: {len(gt_map)} Einträge.")
 
 
+def load_image_list(image_dir: str) -> list[str]:
+    """Alle Bilder (jpg, jpeg, png, bmp) des Ordners, sortiert."""
+    files = []
+    for pattern in ("*.jpg", "*.jpeg", "*.png", "*.bmp"):
+        files.extend(glob.glob(os.path.join(image_dir, pattern)))
+    return sorted(files)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Hilfs-Funktionen
+#  Benchmark-Kern (GUI und --headless)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def load_image_list() -> list[str]:
-    """Lädt alle Bilder aus IMAGE_DIR."""
-    patterns = ["*.jpg", "*.jpeg", "*.png", "*.bmp"]
-    files = []
-    for pat in patterns:
-        files.extend(glob.glob(os.path.join(IMAGE_DIR, pat)))
-    return sorted(files)
+def _failure_reason(detections: list[dict], scan_res: dict) -> str:
+    if not detections:
+        return "YOLO_NO_DETECTION"
+    if not scan_res.get("dmtx_result") and not scan_res.get("ocr_result"):
+        return "DMTX_AND_OCR_FAILED"
+    if scan_res.get("ocr_result") and not scan_res.get("dmtx_result"):
+        return "RECONSTRUCTION_REJECTED"
+    return "UNKNOWN"
+
+
+def benchmark_image(model, path: str, gt_map: dict, index: int) -> dict | None:
+    """Ein Bild durch YOLO + scanner.scan_2class(); None, wenn das Bild nicht lesbar ist."""
+    image = cv2.imread(path)
+    if image is None:
+        return None
+    fname = os.path.basename(path)
+
+    t0 = time.time()
+    yolo_result = model.predict(image, conf=yolo_detector.PREDICT_CONF, verbose=False)[0]
+    detections = yolo_detector.extract_detections(yolo_result)
+    scan_res = scanner.scan_2class(image, detections)
+    duration_ms = int((time.time() - t0) * 1000)
+
+    is_success = scan_res.get("success", False)
+    result_code = scan_res.get("result", "")
+    expected = gt_map.get(fname, None)
+    return {
+        "index": index,
+        "filename": fname,
+        "path": path,
+        "success": is_success,
+        "result_code": result_code,
+        "expected": expected,
+        "is_match": bool(expected) and is_success and result_code == expected,
+        "method": scan_res.get("method", "Unbekannt"),
+        "confidence": scan_res.get("confidence", 0.0),
+        "duration_ms": duration_ms,
+        "fail_reason": None if is_success else _failure_reason(detections, scan_res),
+        "detections": detections,
+        "ocr_result": scan_res.get("ocr_result"),
+        "dmtx_result": scan_res.get("dmtx_result"),
+        "ocr_partial": scan_res.get("ocr_partial_display"),
+        "scan_res": scan_res,
+    }
+
+
+def summarize(results: list[dict], total_images: int, total_time_s: float) -> dict:
+    """Kennzahlen eines Benchmark-Laufs (Genauigkeit und Fehllesungen nur für Bilder mit Ground Truth)."""
+    success_count = sum(1 for r in results if r["success"])
+    with_gt = [r for r in results if r["expected"]]
+    accuracy_count = sum(1 for r in with_gt if r["is_match"])
+    method_dist = {}
+    failure_cats = {}
+    for r in results:
+        if r["success"]:
+            method_dist[r["method"]] = method_dist.get(r["method"], 0) + 1
+        else:
+            failure_cats[r["fail_reason"]] = failure_cats.get(r["fail_reason"], 0) + 1
+
+    total_ms = sum(r["duration_ms"] for r in results)
+    return {
+        "total_images": total_images,
+        "success_count": success_count,
+        "success_rate_pct": round(success_count / total_images * 100, 1) if total_images > 0 else 0,
+        "accuracy_count": accuracy_count,
+        "accuracy_total_gt": len(with_gt),
+        "accuracy_pct": round(accuracy_count / len(with_gt) * 100, 1) if with_gt else 0,
+        "false_read_count": sum(1 for r in with_gt if r["success"] and not r["is_match"]),
+        "no_read_count": len(results) - success_count,
+        "avg_duration_ms": round(total_ms / total_images, 1) if total_images > 0 else 0,
+        "total_time_s": round(total_time_s, 1),
+        "method_distribution": method_dist,
+        "failure_categories": failure_cats,
+    }
+
+
+def format_result_line(entry: dict, total: int) -> str:
+    status = "✅" if entry["success"] else "❌"
+    match_str = f" ({'✓' if entry['is_match'] else '✗'})" if entry["expected"] else ""
+    return (
+        f"  {status} [{entry['index']:>3}/{total}] {entry['filename']:<14} "
+        f"→ {entry['result_code'] if entry['success'] else 'FAIL':<8} "
+        f"({entry['method']}, {entry['duration_ms']}ms){match_str}"
+    )
+
+
+def format_summary_lines(summary: dict) -> list[str]:
+    s = summary
+    return [
+        f"\n{'═' * 60}",
+        "  BENCHMARK ABGESCHLOSSEN",
+        f"{'═' * 60}",
+        f"  Bilder:         {s['total_images']}",
+        f"  Erfolgsrate:    {s['success_count']}/{s['total_images']} ({s['success_rate_pct']:.1f}%)",
+        f"  Genauigkeit GT: {s['accuracy_count']}/{s['accuracy_total_gt']} ({s['accuracy_pct']:.1f}%)",
+        f"  Falsch gelesen: {s['false_read_count']}",
+        f"  Nicht gelesen:  {s['no_read_count']}",
+        f"  Ø Dauer/Bild:   {s['avg_duration_ms']:.0f} ms",
+        f"  Gesamtzeit:     {s['total_time_s']:.1f}s",
+        f"{'═' * 60}",
+    ]
+
+
+def run_benchmark(model, image_paths: list[str], gt_map: dict, log=print, on_progress=None) -> tuple[list, dict]:
+    """
+    Führt den Benchmark über alle Bilder aus.
+
+    Args:
+        log: Ausgabe für Protokollzeilen.
+        on_progress: Optionaler Callback (bild_index, gesamt, ergebnisse, laufzeit_s) nach jedem Bild.
+    """
+    total = len(image_paths)
+    results = []
+    log(f"\n🚀 Benchmark gestartet: {total} Bilder\n{'─' * 60}")
+    start_time = time.time()
+
+    for idx, path in enumerate(image_paths):
+        entry = benchmark_image(model, path, gt_map, idx + 1)
+        if entry is None:
+            log(f"  ⚠️  {os.path.basename(path)}: Bild konnte nicht geladen werden")
+            continue
+        results.append(entry)
+        log(format_result_line(entry, total))
+        if on_progress:
+            on_progress(idx, total, results, time.time() - start_time)
+
+    return results, summarize(results, total, time.time() - start_time)
+
+
+def save_report(results: list[dict], summary: dict, image_dir: str, gt_path: str) -> str:
+    """Schreibt den Bericht nach benchmark_reports/ (mit Datum, Zeit & Version) und als benchmark_baseline.json."""
+    now_dt = datetime.now()
+    report = {
+        "version": BENCHMARK_VERSION,
+        "timestamp": now_dt.isoformat(),
+        "image_dir": image_dir,
+        "ground_truth_file": gt_path,
+        "summary": summary,
+        "details": [{k: v for k, v in r.items() if k != "scan_res"} for r in results],
+    }
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    report_path = os.path.join(REPORTS_DIR, f"benchmark_{now_dt.strftime('%Y-%m-%d_%H-%M-%S')}_v{BENCHMARK_VERSION}.json")
+    for path in (report_path, BASELINE_PATH):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2, ensure_ascii=False, default=str)
+    return report_path
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Bild-Hilfsfunktionen
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 def cv2_to_pil(cv_img: np.ndarray) -> Image.Image:
@@ -190,7 +307,7 @@ def draw_boxes_on_image(cv_img: np.ndarray, detections: list[dict]) -> np.ndarra
 class BenchmarkApp(ctk.CTk):
     """Hauptfenster der Benchmark-Applikation."""
 
-    def __init__(self):
+    def __init__(self, image_dir: str = IMAGE_DIR, gt_path: str = GROUND_TRUTH_PATH):
         super().__init__()
 
         # --- Fenster-Setup ---
@@ -204,9 +321,10 @@ class BenchmarkApp(ctk.CTk):
         self.configure(fg_color=BG_DARK)
 
         # --- Daten ---
-        self.image_paths = load_image_list()
-        self.ground_truth = load_ground_truth()
-        self.yolo_model = None
+        self.image_dir = image_dir
+        self.gt_path = gt_path
+        self.image_paths = load_image_list(image_dir)
+        self.ground_truth = load_ground_truth(gt_path)
         self.benchmark_results = []
         self.benchmark_summary = {}
         self.benchmark_running = False
@@ -398,7 +516,7 @@ class BenchmarkApp(ctk.CTk):
 
         # Bild-Grid (Thumbnails)
         grid_label = ctk.CTkLabel(
-            frame, text=f"Bildvorschau  ({os.path.basename(IMAGE_DIR)}/)",
+            frame, text=f"Bildvorschau  ({os.path.basename(self.image_dir)}/)",
             font=("Segoe UI Semibold", 16), text_color=TEXT_PRIMARY,
         )
         grid_label.pack(anchor="w", padx=30, pady=(20, 8))
@@ -413,10 +531,9 @@ class BenchmarkApp(ctk.CTk):
 
     def _get_last_run_info(self) -> str:
         """Gibt Info zum letzten Benchmark-Run zurück."""
-        baseline_path = os.path.join(APP_DIR, "benchmark_baseline.json")
-        if os.path.exists(baseline_path):
+        if os.path.exists(BASELINE_PATH):
             try:
-                with open(baseline_path, "r", encoding="utf-8") as f:
+                with open(BASELINE_PATH, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 ts = data.get("timestamp", "")
                 if ts:
@@ -692,7 +809,7 @@ class BenchmarkApp(ctk.CTk):
         if code:
             fname = os.path.basename(self.image_paths[self.annotate_index])
             self.ground_truth[fname] = code
-            save_ground_truth(self.ground_truth)
+            save_ground_truth(self.ground_truth, self.gt_path)
             self._update_status_label()
 
         self._annotate_next()
@@ -702,7 +819,7 @@ class BenchmarkApp(ctk.CTk):
         fname = os.path.basename(self.image_paths[self.annotate_index])
         if fname in self.ground_truth:
             del self.ground_truth[fname]
-            save_ground_truth(self.ground_truth)
+            save_ground_truth(self.ground_truth, self.gt_path)
             self._update_status_label()
         self._annotate_show_current()
 
@@ -756,7 +873,7 @@ class BenchmarkApp(ctk.CTk):
             f"📁  {n} Bilder werden evaluiert",
             f"✅  {n_gt} Ground-Truth-Einträge verfügbar",
             f"🤖  Pipeline: YOLO-Detektion → DataMatrix + OCR → Triple-Validation",
-            f"📍  Quelle: {IMAGE_DIR}",
+            f"📍  Quelle: {self.image_dir}",
         ]
         for item in info_items:
             ctk.CTkLabel(
@@ -855,213 +972,49 @@ class BenchmarkApp(ctk.CTk):
             text="YOLO-Modell wird geladen..."
         ))
 
-        model = _load_yolo_model()
-        if model is None:
+        try:
+            model, _ = yolo_detector.load_model(APP_DIR)
+        except Exception as e:
+            logger.error(f"YOLO-Modell konnte nicht geladen werden: {e}")
             self._bench_log("❌ YOLO-Modell konnte nicht geladen werden!")
             self.after(0, self._benchmark_finished_error)
             return
 
-        self.yolo_model = model
         self._bench_log("✅ YOLO-Modell geladen.")
 
-        gt_map = self.ground_truth
-        image_paths = self.image_paths
-        total = len(image_paths)
-        results = []
-
-        success_count = 0
-        accuracy_count = 0
-        false_read_count = 0
-        total_gt = 0
-        total_ms = 0
-        failure_cats = {}
-        method_dist = {}
-
-        self._bench_log(f"\n🚀 Benchmark gestartet: {total} Bilder\n{'─' * 60}")
-
-        start_time = time.time()
-
-        for idx, path in enumerate(image_paths):
-            fname = os.path.basename(path)
-
-            # Bild laden
-            image = cv2.imread(path)
-            if image is None:
-                self._bench_log(f"  ⚠️  {fname}: Bild konnte nicht geladen werden")
-                continue
-
-            t0 = time.time()
-
-            # YOLO Detektion
-            yolo_results = model.predict(image, conf=0.15, verbose=False)
-            boxes = yolo_results[0].boxes
-
-            detections = []
-            for box in boxes:
-                cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
-                x1, y1, x2, y2 = [int(v) for v in box.xyxy[0]]
-                detections.append({
-                    "cls": cls_id,
-                    "conf": conf,
-                    "box": (x1, y1, x2, y2),
-                })
-
-            # Produktionstreue 2-Klassen Pipeline aufrufen (dmx_crop + txt_crop parallel + cross-validation)
-            scan_res = scanner.scan_2class(image, detections)
-            duration_ms = int((time.time() - t0) * 1000)
-            total_ms += duration_ms
-
-            is_success = scan_res.get("success", False)
-            result_code = scan_res.get("result", "")
-            method = scan_res.get("method", "Unbekannt")
-            expected = gt_map.get(fname, None)
-            confidence = scan_res.get("confidence", 0.0)
-
-            is_match = False
-            if expected:
-                total_gt += 1
-                if is_success and result_code == expected:
-                    is_match = True
-                    accuracy_count += 1
-                elif is_success:
-                    false_read_count += 1
-
-            if is_success:
-                success_count += 1
-                method_dist[method] = method_dist.get(method, 0) + 1
-                fail_reason = None
-            else:
-                if len(detections) == 0:
-                    fail_reason = "YOLO_NO_DETECTION"
-                elif not scan_res.get("dmtx_result") and not scan_res.get("ocr_result"):
-                    fail_reason = "DMTX_AND_OCR_FAILED"
-                elif scan_res.get("ocr_result") and not scan_res.get("dmtx_result"):
-                    fail_reason = "RECONSTRUCTION_REJECTED"
-                else:
-                    fail_reason = "UNKNOWN"
-                failure_cats[fail_reason] = failure_cats.get(fail_reason, 0) + 1
-
-            result_entry = {
-                "index": idx + 1,
-                "filename": fname,
-                "path": path,
-                "success": is_success,
-                "result_code": result_code,
-                "expected": expected,
-                "is_match": is_match,
-                "method": method,
-                "confidence": confidence,
-                "duration_ms": duration_ms,
-                "fail_reason": fail_reason,
-                "detections": detections,
-                "ocr_result": scan_res.get("ocr_result"),
-                "dmtx_result": scan_res.get("dmtx_result"),
-                "ocr_partial": scan_res.get("ocr_partial_display"),
-                "scan_res": scan_res,
-            }
-            results.append(result_entry)
-
-            # Progress
-            pct = (idx + 1) / total
-            status = "✅" if is_success else "❌"
-            match_str = f" ({'✓' if is_match else '✗'})" if expected else ""
-            elapsed = time.time() - start_time
+        def _on_progress(idx, total, results, elapsed):
+            success_count = sum(1 for r in results if r["success"])
             eta = (elapsed / (idx + 1)) * (total - idx - 1)
 
-            log_line = (
-                f"  {status} [{idx + 1:>3}/{total}] {fname:<14} "
-                f"→ {result_code if is_success else 'FAIL':<8} "
-                f"({method}, {duration_ms}ms){match_str}"
-            )
-            self._bench_log(log_line)
-
-            def _update_progress(p=pct, i=idx, t=total, e=eta, s=success_count):
-                self.bench_progress_bar.set(p)
-                self.bench_progress_label.configure(
-                    text=f"Verarbeite Bild {i + 1} / {t}"
-                )
+            def _update():
+                self.bench_progress_bar.set((idx + 1) / total)
+                self.bench_progress_label.configure(text=f"Verarbeite Bild {idx + 1} / {total}")
                 self.bench_progress_detail.configure(
-                    text=f"Erfolgsrate: {s}/{i + 1} • ETA: {int(e)}s"
+                    text=f"Erfolgsrate: {success_count}/{idx + 1} • ETA: {int(eta)}s"
                 )
-            self.after(0, _update_progress)
+            self.after(0, _update)
 
-        # Zusammenfassung
-        total_time = time.time() - start_time
-        avg_ms = total_ms / total if total > 0 else 0
-        success_pct = (success_count / total * 100) if total > 0 else 0
-        accuracy_pct = (accuracy_count / total_gt * 100) if total_gt > 0 else 0
-
-        self.benchmark_summary = {
-            "total_images": total,
-            "success_count": success_count,
-            "success_rate_pct": round(success_pct, 1),
-            "accuracy_count": accuracy_count,
-            "accuracy_total_gt": total_gt,
-            "accuracy_pct": round(accuracy_pct, 1),
-            "false_read_count": false_read_count,
-            "no_read_count": len(results) - success_count,
-            "avg_duration_ms": round(avg_ms, 1),
-            "total_time_s": round(total_time, 1),
-            "method_distribution": method_dist,
-            "failure_categories": failure_cats,
-        }
-
+        results, summary = run_benchmark(model, self.image_paths, self.ground_truth,
+                                         log=self._bench_log, on_progress=_on_progress)
         self.benchmark_results = results
-
-        # Report speichern (mit Datum, Zeit & Version)
-        now_dt = datetime.now()
-        timestamp_str = now_dt.strftime("%Y-%m-%d_%H-%M-%S")
-        version_str = "2.3.0"
-
-        report = {
-            "version": version_str,
-            "timestamp": now_dt.isoformat(),
-            "image_dir": IMAGE_DIR,
-            "ground_truth_file": GROUND_TRUTH_PATH,
-            "summary": self.benchmark_summary,
-            "details": [{k: v for k, v in r.items() if k != "scan_res"} for r in results],
-        }
-
-        # Ordner für historische Benchmark-Berichte
-        reports_dir = os.path.join(APP_DIR, "benchmark_reports")
-        os.makedirs(reports_dir, exist_ok=True)
-        hist_report_path = os.path.join(reports_dir, f"benchmark_{timestamp_str}_v{version_str}.json")
-        baseline_path = os.path.join(APP_DIR, "benchmark_baseline.json")
+        self.benchmark_summary = summary
 
         try:
-            with open(hist_report_path, "w", encoding="utf-8") as f:
-                json.dump(report, f, indent=2, ensure_ascii=False, default=str)
-            with open(baseline_path, "w", encoding="utf-8") as f:
-                json.dump(report, f, indent=2, ensure_ascii=False, default=str)
-            self._bench_log(f"\n📄 Report gespeichert: {hist_report_path}")
+            report_path = save_report(results, summary, self.image_dir, self.gt_path)
+            self._bench_log(f"\n📄 Report gespeichert: {report_path}")
         except Exception as e:
             self._bench_log(f"\n⚠️ Report-Fehler: {e}")
 
-        summary_lines = [
-            f"\n{'═' * 60}",
-            f"  BENCHMARK ABGESCHLOSSEN",
-            f"{'═' * 60}",
-            f"  Bilder:         {total}",
-            f"  Erfolgsrate:    {success_count}/{total} ({success_pct:.1f}%)",
-            f"  Genauigkeit GT: {accuracy_count}/{total_gt} ({accuracy_pct:.1f}%)",
-            f"  Falsch gelesen: {false_read_count}",
-            f"  Nicht gelesen:  {len(results) - success_count}",
-            f"  Ø Dauer/Bild:   {avg_ms:.0f} ms",
-            f"  Gesamtzeit:     {total_time:.1f}s",
-            f"{'═' * 60}",
-        ]
-        for line in summary_lines:
+        for line in format_summary_lines(summary):
             self._bench_log(line)
 
-        # UI aktualisieren
         def _done():
             self.bench_progress_bar.set(1.0)
             self.bench_progress_label.configure(
-                text=f"✅ Benchmark abgeschlossen — {success_pct:.1f}% Erfolgsrate"
+                text=f"✅ Benchmark abgeschlossen — {summary['success_rate_pct']:.1f}% Erfolgsrate"
             )
             self.bench_progress_detail.configure(
-                text=f"{total} Bilder in {total_time:.1f}s verarbeitet"
+                text=f"{summary['total_images']} Bilder in {summary['total_time_s']:.1f}s verarbeitet"
             )
             self.benchmark_start_btn.configure(
                 state="normal", text="🔄  Erneut starten",
@@ -1550,15 +1503,6 @@ class BenchmarkApp(ctk.CTk):
             img_lbl_1._ctk_img_ref = ctk_annotated
             img_lbl_1.pack(padx=10, pady=(5, 12))
 
-            # 2. Crop (was der Scanner bekommt)
-            crop_card = ctk.CTkFrame(images_frame, fg_color=BG_CARD, corner_radius=14)
-            crop_card.pack(side="right", fill="both", expand=True, padx=(5, 0))
-
-            ctk.CTkLabel(
-                crop_card, text="✂️  Scanner-Crop (Eingabe für Pipeline)",
-                font=("Segoe UI Semibold", 14), text_color=TEXT_PRIMARY,
-            ).pack(anchor="w", padx=15, pady=(12, 5))
-
             # 2. Crops (Eingaben für 2-Klassen Pipeline: DMX & Text)
             crop_card = ctk.CTkFrame(images_frame, fg_color=BG_CARD, corner_radius=14)
             crop_card.pack(side="right", fill="both", expand=True, padx=(5, 0))
@@ -1568,35 +1512,8 @@ class BenchmarkApp(ctk.CTk):
                 font=("Segoe UI Semibold", 14), text_color=TEXT_PRIMARY,
             ).pack(anchor="w", padx=15, pady=(12, 5))
 
-            # Detections nach Klasse trennen
-            dmx_dets = [d for d in detections if d.get("cls") == 0 and d.get("conf", 0) >= 0.30]
-            txt_dets = [d for d in detections if d.get("cls") == 1 and d.get("conf", 0) >= 0.25]
-
-            best_dmx = max(dmx_dets, key=lambda d: d["conf"]) if dmx_dets else None
-            best_txt = max(txt_dets, key=lambda d: d["conf"]) if txt_dets else None
-
-            # Fallback Smart Crop Derivation wenn eine Klasse fehlt
-            if best_dmx and not best_txt:
-                x1_d, y1_d, x2_d, y2_d = best_dmx["box"]
-                w_d, h_d = x2_d - x1_d, y2_d - y1_d
-                derived_txt_box = (
-                    max(0, x1_d - int(w_d * 1.5)),
-                    max(0, y1_d - int(h_d * 1.5)),
-                    x2_d + int(w_d * 2.5),
-                    y2_d + int(h_d * 2.5)
-                )
-                best_txt = {"cls": 1, "box": derived_txt_box, "conf": best_dmx["conf"], "derived": True}
-
-            elif best_txt and not best_dmx:
-                x1_t, y1_t, x2_t, y2_t = best_txt["box"]
-                w_t, h_t = x2_t - x1_t, y2_t - y1_t
-                derived_dmx_box = (
-                    max(0, x1_t - int(w_t * 1.5)),
-                    max(0, y1_t - int(h_t * 1.5)),
-                    x2_t + int(w_t * 2.5),
-                    y2_t + int(h_t * 2.5)
-                )
-                best_dmx = {"cls": 0, "box": derived_dmx_box, "conf": best_txt["conf"], "derived": True}
+            # Dieselbe Auswahl (inkl. abgeleiteter Boxen) wie in scanner.scan_2class()
+            best_dmx, best_txt = scanner.select_label_detections(detections)
 
             crop_container = ctk.CTkFrame(crop_card, fg_color="transparent")
             crop_container.pack(fill="both", expand=True, padx=10, pady=5)
@@ -1762,12 +1679,24 @@ class BenchmarkApp(ctk.CTk):
 #  Start
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def run_headless(image_dir: str, gt_path: str):
+    """Benchmark ohne GUI; schreibt denselben Bericht wie die GUI."""
+    model, _ = yolo_detector.load_model(APP_DIR)
+    results, summary = run_benchmark(model, load_image_list(image_dir), load_ground_truth(gt_path))
+    print(f"\n📄 Report gespeichert: {save_report(results, summary, image_dir, gt_path)}")
+    for line in format_summary_lines(summary):
+        print(line)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DataDetector Benchmark & Ground-Truth-Tool")
     parser.add_argument("--images", default=IMAGE_DIR, help="Bildordner (Standard: training_data)")
     parser.add_argument("--gt", default=GROUND_TRUTH_PATH, help="Ground-Truth-Datei (Standard: ground_truth.json)")
+    parser.add_argument("--headless", action="store_true", help="Benchmark ohne GUI ausführen und Bericht speichern")
     args = parser.parse_args()
-    IMAGE_DIR = os.path.abspath(args.images)
-    GROUND_TRUTH_PATH = os.path.abspath(args.gt)
-    app = BenchmarkApp()
-    app.mainloop()
+    images_dir = os.path.abspath(args.images)
+    gt_file = os.path.abspath(args.gt)
+    if args.headless:
+        run_headless(images_dir, gt_file)
+    else:
+        BenchmarkApp(images_dir, gt_file).mainloop()

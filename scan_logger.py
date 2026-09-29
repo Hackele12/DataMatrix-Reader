@@ -8,10 +8,10 @@ Auswertung durch externe Programme.
 Features:
 - JSON-Lines Format (.jsonl): Ein JSON-Record pro Zeile, streambar und verarbeitbar
 - Qualitäts-Grading (A/B/C/D) mit diagnostischen Flags
-- Automatische Bildspeicherung für jeden Scan
-- Festplattenschutz: Bei >70% Laufwerksauslastung wird NICHTS mehr gespeichert
+- Bildspeicherung bei Fehlschlägen (optional für alle Scans)
+- Festplattenschutz: Bei weniger als 2 GB freiem Speicher wird NICHTS mehr gespeichert
 - Session-Statistiken (im RAM + Zusammenfassung bei Shutdown)
-- Log-Rotation: Neue Datei pro Tag, alte Dateien nach Limit gelöscht
+- Alte Tages-Logdateien (scans_*.jsonl) werden in scans.jsonl zusammengeführt
 """
 
 import json
@@ -20,7 +20,7 @@ import os
 import shutil
 import time
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 
 import cv2
 import numpy as np
@@ -30,9 +30,8 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 #  Konstanten & Hilfsfunktionen                                                #
 # --------------------------------------------------------------------------- #
-_DISK_USAGE_LIMIT = 0.70          # 70% Auslastung → Logging stoppen
+_MIN_FREE_GB = 2.0                # Weniger freier Speicher → Logging pausiert
 _DISK_CHECK_INTERVAL_S = 30.0     # Alle 30s erneut prüfen
-_MAX_LOG_FILES = 30               # Maximal 30 Tages-Log-Dateien behalten
 _IMAGE_JPEG_QUALITY = 85          # JPEG-Qualität für gespeicherte Bilder
 
 
@@ -100,6 +99,23 @@ def cleanup_nested_image_folders(base_dir: str):
         pass
 
 
+def _collect_jsonl_records(path: str, records_by_id: dict, ordered_records: list):
+    """Liest JSONL-Records und übernimmt jede Scan-ID (bzw. jeden Zeitstempel) nur einmal."""
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line_str = line.strip()
+            if not line_str:
+                continue
+            try:
+                rec = json.loads(line_str)
+                sid = rec.get("scan_id") or rec.get("ts")
+                if sid and sid not in records_by_id:
+                    records_by_id[sid] = line_str
+                    ordered_records.append(line_str)
+            except Exception:
+                pass
+
+
 def consolidate_logs_in_dir(log_dir: str):
     """
     Führt alte Tages-Logdateien (scans_*.jsonl) in die primäre Gesamtdatei scans.jsonl zusammen,
@@ -120,36 +136,11 @@ def consolidate_logs_in_dir(log_dir: str):
         ordered_records = []
 
         if os.path.exists(target_single_log):
-            with open(target_single_log, "r", encoding="utf-8") as f:
-                for line in f:
-                    line_str = line.strip()
-                    if not line_str:
-                        continue
-                    try:
-                        rec = json.loads(line_str)
-                        sid = rec.get("scan_id") or rec.get("ts")
-                        if sid and sid not in records_by_id:
-                            records_by_id[sid] = line_str
-                            ordered_records.append(line_str)
-                    except Exception:
-                        pass
+            _collect_jsonl_records(target_single_log, records_by_id, ordered_records)
 
         for df in daily_files:
-            df_path = os.path.join(log_dir, df)
             try:
-                with open(df_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line_str = line.strip()
-                        if not line_str:
-                            continue
-                        try:
-                            rec = json.loads(line_str)
-                            sid = rec.get("scan_id") or rec.get("ts")
-                            if sid and sid not in records_by_id:
-                                records_by_id[sid] = line_str
-                                ordered_records.append(line_str)
-                        except Exception:
-                            pass
+                _collect_jsonl_records(os.path.join(log_dir, df), records_by_id, ordered_records)
             except Exception as e:
                 logger.warning(f"ScanLogger: Fehler beim Lesen von {df}: {e}")
 
@@ -177,7 +168,7 @@ def _make_scan_id(counter: int) -> str:
     return f"SCN-{time.strftime('%Y%m%d-%H%M%S')}-{counter:04d}"
 
 
-def _compute_grade(result: dict, flags: list[str]) -> str:
+def _compute_grade(result: dict) -> str:
     """
     Berechnet ein Qualitäts-Grade basierend auf dem Scan-Ergebnis.
 
@@ -189,17 +180,12 @@ def _compute_grade(result: dict, flags: list[str]) -> str:
     if not result.get("success", False):
         return "D"
 
-    method = result.get("method", "")
     confidence = result.get("confidence", 0.0)
-    verified = result.get("verified", False)
-
-    if verified and confidence >= 0.95:
+    if result.get("verified", False) and confidence >= 0.95:
         return "A"
-    if confidence >= 0.70 and method != "Rekonstruiert":
+    if confidence >= 0.70 and result.get("method", "") != "Rekonstruiert":
         return "B"
-    if result.get("success"):
-        return "C"
-    return "D"
+    return "C"
 
 
 def _compute_flags(result: dict, detection_info: dict, timing: dict) -> list[str]:
@@ -248,8 +234,8 @@ class ScanLogger:
     """
     Strukturierter Scan-Logger für industriellen 24/7-Betrieb.
 
-    Schreibt jeden Scan als JSON-Lines Record und speichert das Kamerabild.
-    Prüft die Festplattenauslastung und stoppt bei >70%.
+    Schreibt jeden Scan als JSON-Lines Record und speichert bei Bedarf das Kamerabild.
+    Pausiert, solange weniger als 2 GB Speicher frei sind.
     """
 
     def __init__(self, log_dir: str = r"U:\Temp\DataMatrixReader.logFiles", save_all_scans: bool = False):
@@ -307,7 +293,7 @@ class ScanLogger:
         Prüft die Festplattenauslastung. Ergebnis wird 30s gecacht.
 
         Returns:
-            True wenn mindestens 2 GB freier Speicherplatz vorhanden ist, False sonst.
+            True wenn mindestens _MIN_FREE_GB freier Speicherplatz vorhanden ist, False sonst.
         """
         now = time.time()
         if now - self._last_disk_check < _DISK_CHECK_INTERVAL_S:
@@ -319,11 +305,11 @@ class ScanLogger:
             usage = shutil.disk_usage(path)
             free_gb = usage.free / (1024**3)
 
-            if free_gb < 2.0:
+            if free_gb < _MIN_FREE_GB:
                 if self._disk_ok:
                     logger.warning(
                         f"ScanLogger: FESTPLATTENSCHUTZ AKTIV! "
-                        f"Weniger als 2.0 GB Speicherplatz frei: {free_gb:.1f} GB. "
+                        f"Weniger als {_MIN_FREE_GB:.1f} GB Speicherplatz frei: {free_gb:.1f} GB. "
                         f"Speicherung pausiert bis Platz frei wird."
                     )
                 self._disk_ok = False
@@ -429,14 +415,12 @@ class ScanLogger:
 
         # Flags und Grade berechnen
         flags = _compute_flags(scan_result, detection_info, timing)
-        grade = _compute_grade(scan_result, flags)
+        grade = _compute_grade(scan_result)
 
-        # Bild speichern Logik: Nur bei Fehler (success == False) ein Bild auf Festplatte speichern
+        # Bild nur bei Fehlschlag speichern (oder für alle Scans, wenn save_all_scans aktiv ist)
         image_path = None
         resolution = None
-        success = scan_result.get("success", False)
-        is_slow = "SLOW_SCAN" in flags
-        should_save_image = (not success) or self.save_all_scans  # Fehler-Bild ODER alle Bilder speichern
+        should_save_image = (not scan_result.get("success", False)) or self.save_all_scans
 
         if frame is not None and should_save_image:
             h, w = frame.shape[:2]
@@ -445,7 +429,7 @@ class ScanLogger:
             if image_path:
                 flags.append("IMAGE_SAVED")
 
-        # Internes Timing aus scanner.py extrahieren
+        # Internes Timing aus dem scanner-Paket extrahieren
         internal_timing = scan_result.get("_internal_timing", {})
 
         # JSONL-Record zusammenbauen

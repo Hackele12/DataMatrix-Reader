@@ -1,0 +1,31 @@
+"""
+scanner — Dual-Validation Scanner für Horden-Etiketten (DataMatrix + Klarschrift).
+
+Öffentliche Schnittstelle:
+    scan_2class(frame, detections)  2-Klassen-Pipeline für YOLO-Detektionen (Produktion)
+    select_label_detections(dets)   DataMatrix-/Text-Detektion, die scan_2class() auswertet
+    scan(frame)                     Gesamtbild-/Etikett-Scan ohne Detektionen
+    scan_datamatrix(crop)           nur DataMatrix auf einem Crop
+    scan_ocr(crop)                  nur Klarschrift auf einem Crop
+    deskew_crop(image, box)         begradigter YOLO-Ausschnitt mit Quiet Zone
+
+Module:
+    config       Feature-Schalter, Code-Format, Pfade
+    pipeline     Orchestrierung der Scans (Fast-Paths, Gegenprobe, Gamma-Fallback)
+    fusion       Zusammenführung von OCR, DataMatrix und Referenzbild; Gitter-Rekonstruktion
+    dmx_decoder  zxing-cpp / pylibdmtx Dekodierung, Dot-Peen-Varianten, Rahmen-Rekonstruktion
+    dmx_grid     10x10-Gittergeometrie, Sampling und Abgleich mit Referenzgittern
+    dmx_codec    ECC200-Encoder (Reed-Solomon, Utah-Placement) für Referenzgitter
+    ocr          EasyOCR Multi-Pass und Auswertung von Teillesungen
+    code_format  Horden-Code-Format und OCR-Verwechslungskorrektur
+    ref_images   Pipeline 3: Hamming-Abgleich gegen generated_codes/
+    horde_matching  Horden-DB-Abgleich und OCR-Konfusionskorrektur (Schalter)
+    onnx_models  PACC-Zeichenklassifikator und MicroUNet-Binarisierer
+    image_ops    Allgemeine Bildfilter und Zuschnitte
+    results      Ergebnis-Dictionaries
+"""
+
+from .image_ops import deskew_crop
+from .pipeline import scan, scan_2class, scan_datamatrix, scan_ocr, select_label_detections
+
+__all__ = ["scan", "scan_2class", "scan_datamatrix", "scan_ocr", "select_label_detections", "deskew_crop"]
