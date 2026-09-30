@@ -1,0 +1,186 @@
+{
+  "version": "2.3.0",
+  "timestamp": "2026-09-30T08:45:15.445871",
+  "image_dir": "C:\\Users\\kremidas\\Documents\\DataDetector\\field_data",
+  "ground_truth_file": "C:\\Users\\kremidas\\Documents\\DataDetector\\ground_truth_field.json",
+  "summary": {
+    "total_images": 4,
+    "success_count": 4,
+    "success_rate_pct": 100.0,
+    "accuracy_count": 4,
+    "accuracy_total_gt": 4,
+    "accuracy_pct": 100.0,
+    "false_read_count": 0,
+    "no_read_count": 0,
+    "avg_duration_ms": 451.5,
+    "total_time_s": 1.8,
+    "method_distribution": {
+      "Modulabgleich": 3,
+      "Verifiziert": 1
+    },
+    "stage_distribution": {
+      "DataMatrix Modulabgleich (NCC 0.82, Marge 0.24)": 2,
+      "DataMatrix dekodiert (zxing-cpp, yolo_merge9_s0.35_adaptive)": 1,
+      "DataMatrix Modulabgleich (NCC 0.72, Marge 0.28)": 1
+    },
+    "failure_categories": {}
+  },
+  "details": [
+    {
+      "index": 1,
+      "filename": "train_data_20260928_155202.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\field_data\\train_data_20260928_155202.jpg",
+      "success": true,
+      "result_code": "W003",
+      "expected": "W003",
+      "is_match": true,
+      "method": "Modulabgleich",
+      "method_detail": "DataMatrix Modulabgleich (NCC 0.82, Marge 0.24)",
+      "confidence": 0.82,
+      "duration_ms": 679,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9228495955467224,
+          "box": [
+            562,
+            650,
+            738,
+            760
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.876806914806366,
+          "box": [
+            533,
+            447,
+            749,
+            684
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W003",
+      "ocr_partial": null
+    },
+    {
+      "index": 2,
+      "filename": "train_data_20260928_155212.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\field_data\\train_data_20260928_155212.jpg",
+      "success": true,
+      "result_code": "W003",
+      "expected": "W003",
+      "is_match": true,
+      "method": "Modulabgleich",
+      "method_detail": "DataMatrix Modulabgleich (NCC 0.82, Marge 0.24)",
+      "confidence": 0.82,
+      "duration_ms": 384,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9241611361503601,
+          "box": [
+            563,
+            650,
+            739,
+            760
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.8738834261894226,
+          "box": [
+            533,
+            447,
+            749,
+            684
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W003",
+      "ocr_partial": null
+    },
+    {
+      "index": 3,
+      "filename": "train_data_20260928_155330.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\field_data\\train_data_20260928_155330.jpg",
+      "success": true,
+      "result_code": "W005",
+      "expected": "W005",
+      "is_match": true,
+      "method": "Verifiziert",
+      "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_merge9_s0.35_adaptive)",
+      "confidence": 1.0,
+      "duration_ms": 226,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.8846983313560486,
+          "box": [
+            537,
+            650,
+            707,
+            759
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.6941929459571838,
+          "box": [
+            503,
+            449,
+            716,
+            682
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W005",
+      "ocr_partial": null
+    },
+    {
+      "index": 4,
+      "filename": "train_data_20260928_155449.jpg",
+      "path": "C:\\Users\\kremidas\\Documents\\DataDetector\\field_data\\train_data_20260928_155449.jpg",
+      "success": true,
+      "result_code": "W005",
+      "expected": "W005",
+      "is_match": true,
+      "method": "Modulabgleich",
+      "method_detail": "DataMatrix Modulabgleich (NCC 0.72, Marge 0.28)",
+      "confidence": 0.72,
+      "duration_ms": 517,
+      "fail_reason": null,
+      "detections": [
+        {
+          "cls": 1,
+          "conf": 0.9061926603317261,
+          "box": [
+            536,
+            651,
+            706,
+            759
+          ]
+        },
+        {
+          "cls": 0,
+          "conf": 0.7039899826049805,
+          "box": [
+            503,
+            449,
+            716,
+            683
+          ]
+        }
+      ],
+      "ocr_result": null,
+      "dmtx_result": "W005",
+      "ocr_partial": null
+    }
+  ]
+}

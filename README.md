@@ -38,7 +38,7 @@ The DataMatrixReader desktop app communicates with industrial PLC (SPS) controll
 - `train_v2.py` & `Start_Training.bat`: Training of the 2-class YOLOv10 model (`dataset_v2/`, prepared by `prepare_dataset_v2.py`, which labels images from the exact code corners found by `zxing-cpp` or the module reader and skips images without a code).
 - `train_char_classifier.py`, `train_pacc_real.py`, `train_unet_binarizer.py`, `export_*_onnx.py`, `models/`: Training and ONNX export of the optional PACC and MicroUNet models.
 - `generate_datamatrix.py` & `batch_generate_datamatrix.py`: Reference images in `generated_codes/`.
-- `create_v23_release.py` & `setup.bat`: Offline release package and installation.
+- `create_v24_release.py` & `setup.bat`: Offline release package and installation.
 
 ---
 

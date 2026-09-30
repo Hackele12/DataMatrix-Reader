@@ -1,6 +1,6 @@
 {
   "version": "2.3.0",
-  "timestamp": "2026-09-30T08:45:06.977428",
+  "timestamp": "2026-09-30T08:34:48.814707",
   "image_dir": "C:\\Users\\kremidas\\Documents\\DataDetector\\training_data",
   "ground_truth_file": "C:\\Users\\kremidas\\Documents\\DataDetector\\ground_truth.json",
   "summary": {
@@ -12,8 +12,8 @@
     "accuracy_pct": 100.0,
     "false_read_count": 0,
     "no_read_count": 0,
-    "avg_duration_ms": 126.2,
-    "total_time_s": 23.4,
+    "avg_duration_ms": 160.7,
+    "total_time_s": 29.6,
     "method_distribution": {
       "Verifiziert": 170,
       "Modulabgleich": 2
@@ -59,7 +59,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 313,
+      "duration_ms": 366,
       "fail_reason": null,
       "detections": [
         {
@@ -98,7 +98,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 61,
+      "duration_ms": 62,
       "fail_reason": null,
       "detections": [
         {
@@ -127,7 +127,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 56,
+      "duration_ms": 50,
       "fail_reason": null,
       "detections": [
         {
@@ -156,7 +156,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 55,
+      "duration_ms": 51,
       "fail_reason": null,
       "detections": [
         {
@@ -195,7 +195,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 56,
+      "duration_ms": 51,
       "fail_reason": null,
       "detections": [
         {
@@ -234,7 +234,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 62,
+      "duration_ms": 61,
       "fail_reason": null,
       "detections": [
         {
@@ -273,7 +273,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 59,
+      "duration_ms": 54,
       "fail_reason": null,
       "detections": [
         {
@@ -312,7 +312,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 141,
+      "duration_ms": 59,
       "fail_reason": null,
       "detections": [
         {
@@ -351,7 +351,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 59,
+      "duration_ms": 55,
       "fail_reason": null,
       "detections": [
         {
@@ -390,7 +390,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 62,
+      "duration_ms": 55,
       "fail_reason": null,
       "detections": [
         {
@@ -429,7 +429,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median5)",
       "confidence": 1.0,
-      "duration_ms": 93,
+      "duration_ms": 77,
       "fail_reason": null,
       "detections": [
         {
@@ -468,7 +468,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 475,
+      "duration_ms": 574,
       "fail_reason": null,
       "detections": [
         {
@@ -507,7 +507,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 83,
+      "duration_ms": 191,
       "fail_reason": null,
       "detections": [
         {
@@ -546,7 +546,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 78,
+      "duration_ms": 135,
       "fail_reason": null,
       "detections": [
         {
@@ -585,7 +585,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_median5)",
       "confidence": 1.0,
-      "duration_ms": 76,
+      "duration_ms": 106,
       "fail_reason": null,
       "detections": [
         {
@@ -624,7 +624,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 81,
+      "duration_ms": 121,
       "fail_reason": null,
       "detections": [
         {
@@ -663,7 +663,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median5)",
       "confidence": 1.0,
-      "duration_ms": 81,
+      "duration_ms": 120,
       "fail_reason": null,
       "detections": [
         {
@@ -702,7 +702,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 85,
+      "duration_ms": 122,
       "fail_reason": null,
       "detections": [
         {
@@ -751,7 +751,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 80,
+      "duration_ms": 98,
       "fail_reason": null,
       "detections": [
         {
@@ -790,7 +790,7 @@
       "method": "Modulabgleich",
       "method_detail": "DataMatrix Modulabgleich (NCC 0.85, Marge 0.26)",
       "confidence": 0.85,
-      "duration_ms": 429,
+      "duration_ms": 617,
       "fail_reason": null,
       "detections": [
         {
@@ -839,7 +839,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 74,
+      "duration_ms": 194,
       "fail_reason": null,
       "detections": [
         {
@@ -878,7 +878,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 57,
+      "duration_ms": 100,
       "fail_reason": null,
       "detections": [
         {
@@ -917,7 +917,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, locator_raw)",
       "confidence": 1.0,
-      "duration_ms": 56,
+      "duration_ms": 89,
       "fail_reason": null,
       "detections": [
         {
@@ -956,7 +956,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 62,
+      "duration_ms": 114,
       "fail_reason": null,
       "detections": [
         {
@@ -1005,7 +1005,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median5)",
       "confidence": 1.0,
-      "duration_ms": 74,
+      "duration_ms": 125,
       "fail_reason": null,
       "detections": [
         {
@@ -1044,7 +1044,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_erode3)",
       "confidence": 1.0,
-      "duration_ms": 72,
+      "duration_ms": 136,
       "fail_reason": null,
       "detections": [
         {
@@ -1083,7 +1083,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_erode3)",
       "confidence": 1.0,
-      "duration_ms": 68,
+      "duration_ms": 115,
       "fail_reason": null,
       "detections": [
         {
@@ -1122,7 +1122,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 56,
+      "duration_ms": 95,
       "fail_reason": null,
       "detections": [
         {
@@ -1171,7 +1171,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 56,
+      "duration_ms": 95,
       "fail_reason": null,
       "detections": [
         {
@@ -1210,7 +1210,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 58,
+      "duration_ms": 104,
       "fail_reason": null,
       "detections": [
         {
@@ -1249,7 +1249,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 48,
+      "duration_ms": 89,
       "fail_reason": null,
       "detections": [
         {
@@ -1288,7 +1288,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 60,
+      "duration_ms": 99,
       "fail_reason": null,
       "detections": [
         {
@@ -1327,7 +1327,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 278,
+      "duration_ms": 349,
       "fail_reason": null,
       "detections": [
         {
@@ -1376,7 +1376,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 203,
+      "duration_ms": 411,
       "fail_reason": null,
       "detections": [
         {
@@ -1415,7 +1415,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 67,
+      "duration_ms": 169,
       "fail_reason": null,
       "detections": [
         {
@@ -1454,7 +1454,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 51,
+      "duration_ms": 90,
       "fail_reason": null,
       "detections": [
         {
@@ -1493,7 +1493,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 49,
+      "duration_ms": 91,
       "fail_reason": null,
       "detections": [
         {
@@ -1532,7 +1532,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 80,
+      "duration_ms": 128,
       "fail_reason": null,
       "detections": [
         {
@@ -1571,7 +1571,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_erode3)",
       "confidence": 1.0,
-      "duration_ms": 69,
+      "duration_ms": 120,
       "fail_reason": null,
       "detections": [
         {
@@ -1610,7 +1610,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 54,
+      "duration_ms": 102,
       "fail_reason": null,
       "detections": [
         {
@@ -1649,7 +1649,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 66,
+      "duration_ms": 114,
       "fail_reason": null,
       "detections": [
         {
@@ -1688,7 +1688,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 58,
+      "duration_ms": 103,
       "fail_reason": null,
       "detections": [
         {
@@ -1727,7 +1727,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 65,
+      "duration_ms": 103,
       "fail_reason": null,
       "detections": [
         {
@@ -1766,7 +1766,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_median7)",
       "confidence": 1.0,
-      "duration_ms": 74,
+      "duration_ms": 128,
       "fail_reason": null,
       "detections": [
         {
@@ -1815,7 +1815,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 230,
+      "duration_ms": 487,
       "fail_reason": null,
       "detections": [
         {
@@ -1854,7 +1854,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 72,
+      "duration_ms": 186,
       "fail_reason": null,
       "detections": [
         {
@@ -1893,7 +1893,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 49,
+      "duration_ms": 85,
       "fail_reason": null,
       "detections": [
         {
@@ -1932,7 +1932,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 226,
+      "duration_ms": 402,
       "fail_reason": null,
       "detections": [
         {
@@ -1971,7 +1971,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 219,
+      "duration_ms": 398,
       "fail_reason": null,
       "detections": [
         {
@@ -2010,7 +2010,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon + 2 Löschungen)",
       "confidence": 1.0,
-      "duration_ms": 231,
+      "duration_ms": 380,
       "fail_reason": null,
       "detections": [
         {
@@ -2049,7 +2049,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median5)",
       "confidence": 1.0,
-      "duration_ms": 76,
+      "duration_ms": 159,
       "fail_reason": null,
       "detections": [
         {
@@ -2088,7 +2088,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 196,
+      "duration_ms": 336,
       "fail_reason": null,
       "detections": [
         {
@@ -2127,7 +2127,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_erode3)",
       "confidence": 1.0,
-      "duration_ms": 76,
+      "duration_ms": 176,
       "fail_reason": null,
       "detections": [
         {
@@ -2166,7 +2166,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 76,
+      "duration_ms": 141,
       "fail_reason": null,
       "detections": [
         {
@@ -2205,7 +2205,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 51,
+      "duration_ms": 97,
       "fail_reason": null,
       "detections": [
         {
@@ -2244,7 +2244,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 54,
+      "duration_ms": 102,
       "fail_reason": null,
       "detections": [
         {
@@ -2283,7 +2283,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 54,
+      "duration_ms": 89,
       "fail_reason": null,
       "detections": [
         {
@@ -2322,7 +2322,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 62,
+      "duration_ms": 99,
       "fail_reason": null,
       "detections": [
         {
@@ -2361,7 +2361,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 50,
+      "duration_ms": 87,
       "fail_reason": null,
       "detections": [
         {
@@ -2400,7 +2400,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 57,
+      "duration_ms": 97,
       "fail_reason": null,
       "detections": [
         {
@@ -2439,7 +2439,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 51,
+      "duration_ms": 102,
       "fail_reason": null,
       "detections": [
         {
@@ -2478,7 +2478,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 53,
+      "duration_ms": 100,
       "fail_reason": null,
       "detections": [
         {
@@ -2517,7 +2517,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 62,
+      "duration_ms": 102,
       "fail_reason": null,
       "detections": [
         {
@@ -2556,7 +2556,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 61,
+      "duration_ms": 97,
       "fail_reason": null,
       "detections": [
         {
@@ -2595,7 +2595,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 59,
+      "duration_ms": 82,
       "fail_reason": null,
       "detections": [
         {
@@ -2634,7 +2634,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 51,
+      "duration_ms": 88,
       "fail_reason": null,
       "detections": [
         {
@@ -2673,7 +2673,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 55,
+      "duration_ms": 99,
       "fail_reason": null,
       "detections": [
         {
@@ -2712,7 +2712,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 57,
+      "duration_ms": 92,
       "fail_reason": null,
       "detections": [
         {
@@ -2751,7 +2751,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 49,
+      "duration_ms": 116,
       "fail_reason": null,
       "detections": [
         {
@@ -2790,7 +2790,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 57,
+      "duration_ms": 107,
       "fail_reason": null,
       "detections": [
         {
@@ -2829,7 +2829,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 53,
+      "duration_ms": 97,
       "fail_reason": null,
       "detections": [
         {
@@ -2868,7 +2868,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 59,
+      "duration_ms": 106,
       "fail_reason": null,
       "detections": [
         {
@@ -2907,7 +2907,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 58,
+      "duration_ms": 97,
       "fail_reason": null,
       "detections": [
         {
@@ -2946,7 +2946,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 59,
+      "duration_ms": 102,
       "fail_reason": null,
       "detections": [
         {
@@ -2985,7 +2985,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 46,
+      "duration_ms": 102,
       "fail_reason": null,
       "detections": [
         {
@@ -3024,7 +3024,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 62,
+      "duration_ms": 111,
       "fail_reason": null,
       "detections": [
         {
@@ -3063,7 +3063,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 226,
+      "duration_ms": 386,
       "fail_reason": null,
       "detections": [
         {
@@ -3112,7 +3112,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 213,
+      "duration_ms": 430,
       "fail_reason": null,
       "detections": [
         {
@@ -3151,7 +3151,7 @@
       "method": "Modulabgleich",
       "method_detail": "DataMatrix Modulabgleich (NCC 0.79, Marge 0.28)",
       "confidence": 0.79,
-      "duration_ms": 378,
+      "duration_ms": 656,
       "fail_reason": null,
       "detections": [
         {
@@ -3190,7 +3190,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 57,
+      "duration_ms": 172,
       "fail_reason": null,
       "detections": [
         {
@@ -3229,7 +3229,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_median3)",
       "confidence": 1.0,
-      "duration_ms": 69,
+      "duration_ms": 129,
       "fail_reason": null,
       "detections": [
         {
@@ -3268,7 +3268,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_erode5)",
       "confidence": 1.0,
-      "duration_ms": 58,
+      "duration_ms": 122,
       "fail_reason": null,
       "detections": [
         {
@@ -3307,7 +3307,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_erode5)",
       "confidence": 1.0,
-      "duration_ms": 72,
+      "duration_ms": 134,
       "fail_reason": null,
       "detections": [
         {
@@ -3346,7 +3346,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 257,
+      "duration_ms": 484,
       "fail_reason": null,
       "detections": [
         {
@@ -3385,7 +3385,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 405,
+      "duration_ms": 501,
       "fail_reason": null,
       "detections": [
         {
@@ -3424,7 +3424,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 481,
+      "duration_ms": 505,
       "fail_reason": null,
       "detections": [
         {
@@ -3473,7 +3473,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 416,
+      "duration_ms": 529,
       "fail_reason": null,
       "detections": [
         {
@@ -3512,7 +3512,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 432,
+      "duration_ms": 438,
       "fail_reason": null,
       "detections": [
         {
@@ -3561,7 +3561,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 181,
+      "duration_ms": 168,
       "fail_reason": null,
       "detections": [
         {
@@ -3600,7 +3600,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 145,
+      "duration_ms": 129,
       "fail_reason": null,
       "detections": [
         {
@@ -3639,7 +3639,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon + 2 Löschungen)",
       "confidence": 1.0,
-      "duration_ms": 430,
+      "duration_ms": 486,
       "fail_reason": null,
       "detections": [
         {
@@ -3678,7 +3678,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 169,
+      "duration_ms": 160,
       "fail_reason": null,
       "detections": [
         {
@@ -3717,7 +3717,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 89,
+      "duration_ms": 93,
       "fail_reason": null,
       "detections": [
         {
@@ -3756,7 +3756,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 132,
+      "duration_ms": 108,
       "fail_reason": null,
       "detections": [
         {
@@ -3795,7 +3795,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_erode5)",
       "confidence": 1.0,
-      "duration_ms": 88,
+      "duration_ms": 104,
       "fail_reason": null,
       "detections": [
         {
@@ -3834,7 +3834,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 90,
+      "duration_ms": 92,
       "fail_reason": null,
       "detections": [
         {
@@ -3873,7 +3873,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75)",
       "confidence": 1.0,
-      "duration_ms": 94,
+      "duration_ms": 159,
       "fail_reason": null,
       "detections": [
         {
@@ -3912,7 +3912,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 95,
+      "duration_ms": 99,
       "fail_reason": null,
       "detections": [
         {
@@ -3951,7 +3951,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 100,
+      "duration_ms": 144,
       "fail_reason": null,
       "detections": [
         {
@@ -3990,7 +3990,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 105,
+      "duration_ms": 139,
       "fail_reason": null,
       "detections": [
         {
@@ -4029,7 +4029,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 91,
+      "duration_ms": 87,
       "fail_reason": null,
       "detections": [
         {
@@ -4068,7 +4068,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 111,
+      "duration_ms": 65,
       "fail_reason": null,
       "detections": [
         {
@@ -4107,7 +4107,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 77,
+      "duration_ms": 53,
       "fail_reason": null,
       "detections": [
         {
@@ -4146,7 +4146,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 119,
+      "duration_ms": 75,
       "fail_reason": null,
       "detections": [
         {
@@ -4185,7 +4185,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 125,
+      "duration_ms": 80,
       "fail_reason": null,
       "detections": [
         {
@@ -4224,7 +4224,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 133,
+      "duration_ms": 77,
       "fail_reason": null,
       "detections": [
         {
@@ -4263,7 +4263,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 128,
+      "duration_ms": 71,
       "fail_reason": null,
       "detections": [
         {
@@ -4302,7 +4302,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 122,
+      "duration_ms": 69,
       "fail_reason": null,
       "detections": [
         {
@@ -4341,7 +4341,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_erode7)",
       "confidence": 1.0,
-      "duration_ms": 104,
+      "duration_ms": 71,
       "fail_reason": null,
       "detections": [
         {
@@ -4380,7 +4380,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 104,
+      "duration_ms": 70,
       "fail_reason": null,
       "detections": [
         {
@@ -4419,7 +4419,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 128,
+      "duration_ms": 76,
       "fail_reason": null,
       "detections": [
         {
@@ -4458,7 +4458,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 107,
+      "duration_ms": 82,
       "fail_reason": null,
       "detections": [
         {
@@ -4497,7 +4497,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 91,
+      "duration_ms": 53,
       "fail_reason": null,
       "detections": [
         {
@@ -4536,7 +4536,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 86,
+      "duration_ms": 51,
       "fail_reason": null,
       "detections": [
         {
@@ -4575,7 +4575,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 126,
+      "duration_ms": 72,
       "fail_reason": null,
       "detections": [
         {
@@ -4624,7 +4624,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 101,
+      "duration_ms": 70,
       "fail_reason": null,
       "detections": [
         {
@@ -4673,7 +4673,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 86,
+      "duration_ms": 56,
       "fail_reason": null,
       "detections": [
         {
@@ -4722,7 +4722,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 96,
+      "duration_ms": 58,
       "fail_reason": null,
       "detections": [
         {
@@ -4761,7 +4761,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 97,
+      "duration_ms": 58,
       "fail_reason": null,
       "detections": [
         {
@@ -4800,7 +4800,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 97,
+      "duration_ms": 70,
       "fail_reason": null,
       "detections": [
         {
@@ -4839,7 +4839,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 102,
+      "duration_ms": 78,
       "fail_reason": null,
       "detections": [
         {
@@ -4878,7 +4878,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 94,
+      "duration_ms": 61,
       "fail_reason": null,
       "detections": [
         {
@@ -4917,7 +4917,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_raw)",
       "confidence": 1.0,
-      "duration_ms": 89,
+      "duration_ms": 60,
       "fail_reason": null,
       "detections": [
         {
@@ -4966,7 +4966,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_erode5)",
       "confidence": 1.0,
-      "duration_ms": 87,
+      "duration_ms": 61,
       "fail_reason": null,
       "detections": [
         {
@@ -5015,7 +5015,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 333,
+      "duration_ms": 278,
       "fail_reason": null,
       "detections": [
         {
@@ -5054,7 +5054,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 223,
+      "duration_ms": 83,
       "fail_reason": null,
       "detections": [
         {
@@ -5093,7 +5093,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 117,
+      "duration_ms": 81,
       "fail_reason": null,
       "detections": [
         {
@@ -5132,7 +5132,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 119,
+      "duration_ms": 73,
       "fail_reason": null,
       "detections": [
         {
@@ -5171,7 +5171,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 113,
+      "duration_ms": 79,
       "fail_reason": null,
       "detections": [
         {
@@ -5210,7 +5210,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 135,
+      "duration_ms": 75,
       "fail_reason": null,
       "detections": [
         {
@@ -5249,7 +5249,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 110,
+      "duration_ms": 76,
       "fail_reason": null,
       "detections": [
         {
@@ -5288,7 +5288,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 132,
+      "duration_ms": 83,
       "fail_reason": null,
       "detections": [
         {
@@ -5327,7 +5327,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 119,
+      "duration_ms": 77,
       "fail_reason": null,
       "detections": [
         {
@@ -5366,7 +5366,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_erode3)",
       "confidence": 1.0,
-      "duration_ms": 106,
+      "duration_ms": 53,
       "fail_reason": null,
       "detections": [
         {
@@ -5405,7 +5405,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 143,
+      "duration_ms": 80,
       "fail_reason": null,
       "detections": [
         {
@@ -5454,7 +5454,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 352,
+      "duration_ms": 324,
       "fail_reason": null,
       "detections": [
         {
@@ -5503,7 +5503,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 191,
+      "duration_ms": 215,
       "fail_reason": null,
       "detections": [
         {
@@ -5552,7 +5552,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 125,
+      "duration_ms": 149,
       "fail_reason": null,
       "detections": [
         {
@@ -5601,7 +5601,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 125,
+      "duration_ms": 154,
       "fail_reason": null,
       "detections": [
         {
@@ -5640,7 +5640,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median7)",
       "confidence": 1.0,
-      "duration_ms": 142,
+      "duration_ms": 127,
       "fail_reason": null,
       "detections": [
         {
@@ -5689,7 +5689,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 333,
+      "duration_ms": 619,
       "fail_reason": null,
       "detections": [
         {
@@ -5738,7 +5738,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.35_median3)",
       "confidence": 1.0,
-      "duration_ms": 201,
+      "duration_ms": 196,
       "fail_reason": null,
       "detections": [
         {
@@ -5777,7 +5777,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 97,
+      "duration_ms": 106,
       "fail_reason": null,
       "detections": [
         {
@@ -5816,7 +5816,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 98,
+      "duration_ms": 109,
       "fail_reason": null,
       "detections": [
         {
@@ -5855,7 +5855,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 107,
+      "duration_ms": 112,
       "fail_reason": null,
       "detections": [
         {
@@ -5894,7 +5894,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_erode3)",
       "confidence": 1.0,
-      "duration_ms": 98,
+      "duration_ms": 107,
       "fail_reason": null,
       "detections": [
         {
@@ -5933,7 +5933,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_erode5)",
       "confidence": 1.0,
-      "duration_ms": 121,
+      "duration_ms": 142,
       "fail_reason": null,
       "detections": [
         {
@@ -5972,7 +5972,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 80,
+      "duration_ms": 107,
       "fail_reason": null,
       "detections": [
         {
@@ -6011,7 +6011,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_erode5)",
       "confidence": 1.0,
-      "duration_ms": 97,
+      "duration_ms": 116,
       "fail_reason": null,
       "detections": [
         {
@@ -6050,7 +6050,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_erode5)",
       "confidence": 1.0,
-      "duration_ms": 101,
+      "duration_ms": 118,
       "fail_reason": null,
       "detections": [
         {
@@ -6089,7 +6089,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_erode3)",
       "confidence": 1.0,
-      "duration_ms": 103,
+      "duration_ms": 112,
       "fail_reason": null,
       "detections": [
         {
@@ -6138,7 +6138,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median7)",
       "confidence": 1.0,
-      "duration_ms": 112,
+      "duration_ms": 118,
       "fail_reason": null,
       "detections": [
         {
@@ -6187,7 +6187,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_erode3)",
       "confidence": 1.0,
-      "duration_ms": 105,
+      "duration_ms": 115,
       "fail_reason": null,
       "detections": [
         {
@@ -6236,7 +6236,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 93,
+      "duration_ms": 105,
       "fail_reason": null,
       "detections": [
         {
@@ -6275,7 +6275,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median3)",
       "confidence": 1.0,
-      "duration_ms": 100,
+      "duration_ms": 113,
       "fail_reason": null,
       "detections": [
         {
@@ -6314,7 +6314,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 96,
+      "duration_ms": 160,
       "fail_reason": null,
       "detections": [
         {
@@ -6353,7 +6353,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 332,
+      "duration_ms": 705,
       "fail_reason": null,
       "detections": [
         {
@@ -6392,7 +6392,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 157,
+      "duration_ms": 141,
       "fail_reason": null,
       "detections": [
         {
@@ -6431,7 +6431,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 336,
+      "duration_ms": 484,
       "fail_reason": null,
       "detections": [
         {
@@ -6470,7 +6470,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_erode3)",
       "confidence": 1.0,
-      "duration_ms": 193,
+      "duration_ms": 178,
       "fail_reason": null,
       "detections": [
         {
@@ -6509,7 +6509,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_median7)",
       "confidence": 1.0,
-      "duration_ms": 123,
+      "duration_ms": 138,
       "fail_reason": null,
       "detections": [
         {
@@ -6548,7 +6548,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_median7)",
       "confidence": 1.0,
-      "duration_ms": 122,
+      "duration_ms": 133,
       "fail_reason": null,
       "detections": [
         {
@@ -6587,7 +6587,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_erode3)",
       "confidence": 1.0,
-      "duration_ms": 120,
+      "duration_ms": 140,
       "fail_reason": null,
       "detections": [
         {
@@ -6626,7 +6626,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_median7)",
       "confidence": 1.0,
-      "duration_ms": 101,
+      "duration_ms": 133,
       "fail_reason": null,
       "detections": [
         {
@@ -6665,7 +6665,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_median5)",
       "confidence": 1.0,
-      "duration_ms": 121,
+      "duration_ms": 138,
       "fail_reason": null,
       "detections": [
         {
@@ -6704,7 +6704,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_median7)",
       "confidence": 1.0,
-      "duration_ms": 103,
+      "duration_ms": 131,
       "fail_reason": null,
       "detections": [
         {
@@ -6743,7 +6743,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_erode3)",
       "confidence": 1.0,
-      "duration_ms": 113,
+      "duration_ms": 129,
       "fail_reason": null,
       "detections": [
         {
@@ -6782,7 +6782,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.75_median7)",
       "confidence": 1.0,
-      "duration_ms": 110,
+      "duration_ms": 137,
       "fail_reason": null,
       "detections": [
         {
@@ -6821,7 +6821,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 312,
+      "duration_ms": 459,
       "fail_reason": null,
       "detections": [
         {
@@ -6860,7 +6860,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (Modul-Decoder, Reed-Solomon)",
       "confidence": 1.0,
-      "duration_ms": 372,
+      "duration_ms": 575,
       "fail_reason": null,
       "detections": [
         {
@@ -6899,7 +6899,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s0.5_clahe_median5)",
       "confidence": 1.0,
-      "duration_ms": 173,
+      "duration_ms": 221,
       "fail_reason": null,
       "detections": [
         {
@@ -6938,7 +6938,7 @@
       "method": "Verifiziert",
       "method_detail": "DataMatrix dekodiert (zxing-cpp, yolo_s1.0_median5)",
       "confidence": 1.0,
-      "duration_ms": 89,
+      "duration_ms": 138,
       "fail_reason": null,
       "detections": [
         {

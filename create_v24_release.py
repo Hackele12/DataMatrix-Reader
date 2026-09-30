@@ -1,4 +1,4 @@
-"""create_v23_release.py — Baut DataDetector_v23_Release.zip: Projekt + Python-Laufzeit + fixierte Offline-Wheels."""
+"""create_v24_release.py — Baut DataDetector_v24_Release.zip: Projekt + Python-Laufzeit + fixierte Offline-Wheels."""
 
 import os
 import shutil
@@ -6,7 +6,7 @@ import subprocess
 import time
 import zipfile
 
-VERSION = "v23"
+VERSION = "v24"
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 RELEASES_DIR = os.path.join(PROJECT_DIR, "releases")
 BUILD_DIR = os.path.join(RELEASES_DIR, f"_build_{VERSION}")

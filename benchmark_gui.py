@@ -63,7 +63,7 @@ IMAGE_DIR = os.path.join(APP_DIR, "training_data")
 GROUND_TRUTH_PATH = os.path.join(APP_DIR, "ground_truth.json")
 REPORTS_DIR = os.path.join(APP_DIR, "benchmark_reports")
 BASELINE_PATH = os.path.join(APP_DIR, "benchmark_baseline.json")
-BENCHMARK_VERSION = "2.3.0"
+BENCHMARK_VERSION = "2.4.0"
 IMAGE_PATTERNS = ("*.jpg", "*.jpeg", "*.png", "*.bmp")
 MAX_LISTED_REPORTS = 30
 

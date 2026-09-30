@@ -1,11 +1,11 @@
 @echo off
 setlocal EnableExtensions
-title DataDetector v23 - Setup
+title DataDetector v24 - Setup
 cd /d "%~dp0"
 set "PYTHONUTF8=1"
 
 echo ============================================================
-echo  DataDetector v23 - Einrichtung
+echo  DataDetector v24 - Einrichtung
 echo ============================================================
 echo.
 
